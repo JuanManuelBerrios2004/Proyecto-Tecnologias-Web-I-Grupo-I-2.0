@@ -4,6 +4,7 @@ using SocialMedia.Core.Interfaces;
 using SocialMedia.Infrastructure.Data;
 using SocialMedia.Infrastructure.Mappings;
 using SocialMedia.Infrastructure.Repositories;
+using SocialMedia.Services.Validators;
 namespace SocialMedia.Api
 {
     public class Program
@@ -27,6 +28,11 @@ namespace SocialMedia.Api
             builder.Services.AddOpenApi();
 
             builder.Services.AddAutoMapper(typeof(PostProfile).Assembly);
+
+            //Registrar Validadores de FluentValidator
+            builder.Services.AddScoped<PostDtoValidator>();
+            builder.Services.AddScoped<CrearPostDtoValidator>();
+            builder.Services.AddScoped<ActualizarPostDtoValidator>();
 
             var app = builder.Build();
 

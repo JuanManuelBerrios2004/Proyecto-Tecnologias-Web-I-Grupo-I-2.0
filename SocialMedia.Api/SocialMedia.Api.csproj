@@ -13,6 +13,7 @@
   <ItemGroup>
     <ProjectReference Include="..\SocialMedia.Core\SocialMedia.Core.csproj" />
     <ProjectReference Include="..\SocialMedia.Infrastructure\SocialMedia.Infrastructure.csproj" />
+    <ProjectReference Include="..\SocialMedia.Services\SocialMedia.Services.csproj" />
   </ItemGroup>
 
 </Project>

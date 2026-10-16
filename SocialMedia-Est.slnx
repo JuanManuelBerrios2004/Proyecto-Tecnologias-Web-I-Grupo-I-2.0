@@ -2,4 +2,5 @@
   <Project Path="SocialMedia.Api/SocialMedia.Api.csproj" />
   <Project Path="SocialMedia.Core/SocialMedia.Core.csproj" />
   <Project Path="SocialMedia.Infrastructure/SocialMedia.Infrastructure.csproj" />
+  <Project Path="SocialMedia.Services/SocialMedia.Services.csproj" Id="a6a2d43b-1c50-41aa-afbf-2e2d0e4b101a" />
 </Solution>

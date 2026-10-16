@@ -1,8 +1,10 @@
 ﻿using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
+using SocialMedia.Api.Response;
 using SocialMedia.Core.DTOs;
 using SocialMedia.Core.Entities;
 using SocialMedia.Core.Interfaces;
+using SocialMedia.Services.Validators;
 
 namespace SocialMedia.Api.Controllers
 {
@@ -12,11 +14,17 @@ namespace SocialMedia.Api.Controllers
     {
         private readonly IPostRepository _postRepository;
         private readonly IMapper _mapper;
+        private readonly CrearPostDtoValidator _crearValidator;
+        private readonly ActualizarPostDtoValidator _actualizarValidator;
 
-        public PostController(IMapper mapper, IPostRepository postRepository)
+        public PostController(IMapper mapper, IPostRepository postRepository,
+            CrearPostDtoValidator crearValidator,
+            ActualizarPostDtoValidator actualizarValidator)
         {
             _postRepository = postRepository;
             _mapper = mapper;
+            _crearValidator = crearValidator;
+            _actualizarValidator = actualizarValidator;
         }
 
         #region Sin DTOs
@@ -152,7 +160,11 @@ namespace SocialMedia.Api.Controllers
             //    Description = p.Description,
             //    Imagen = p.Imagen
             //});
-            return Ok(postDto);
+
+            var response = new ApiResponse
+                <IEnumerable<PostDto>>(postDto);
+
+            return Ok(response);
         }
 
         [HttpGet("dto/mapper/{id}")]
@@ -168,45 +180,109 @@ namespace SocialMedia.Api.Controllers
             //    Description = post.Description,
             //    Imagen = post.Imagen
             //};
-            return Ok(post);
+
+            var response = new ApiResponse
+                <PostDto>(postDto);
+
+            return Ok(response);
         }
 
         [HttpPost("dto/mapper/")]
         public async Task<IActionResult> InsertPostDtoMapper(PostDto postDto)
         {
-            var post = _mapper.Map<Post>(postDto);
-            await _postRepository.InsertPost(post);
-            return Ok(post);
+            // Validar el DTO
+            var validationResult = await _crearValidator.ValidateAsync(postDto);
+            if (!validationResult.IsValid)
+            {
+                return BadRequest(new
+                {
+                    message = "Error de validación",
+                    errors = validationResult.Errors.Select(e => new
+                    {
+                        field = e.PropertyName,
+                        error = e.ErrorMessage
+                    })
+                });
+            }
+
+            try
+            {
+                var post = _mapper.Map<Post>(postDto);
+                await _postRepository.InsertPost(post);
+
+                var resultDto = _mapper.Map<PostDto>(post);
+
+                var response = new ApiResponse
+                    <Post>(post);
+
+                return Ok(response);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al crear el post", error = ex.Message });
+            }
         }
 
         [HttpPut("dto/mapper/{id}")]
-        public async Task<IActionResult> UpdatePostDtoMapper(int id, 
+        public async Task<IActionResult> UpdatePostDtoMapper(int id,
             [FromBody] PostDto postDto)
         {
             if (id != postDto.Id)
                 return BadRequest("El ID del post no coincide.");
 
+            // Validar el DTO
+            var validationResult = await _actualizarValidator.ValidateAsync(postDto);
+            if (!validationResult.IsValid)
+            {
+                return BadRequest(new
+                {
+                    message = "Error de validación",
+                    errors = validationResult.Errors.Select(e => new
+                    {
+                        field = e.PropertyName,
+                        error = e.ErrorMessage
+                    })
+                });
+            }
+
             var post = await _postRepository.GetPostByIdAsync(id);
             if (post == null)
-                return NotFound("Post no encontrado.");
+                return NotFound(new { message = "Post no encontrado." });
 
-            _mapper.Map(postDto, post);
+            try
+            {
+                _mapper.Map(postDto, post);
+                await _postRepository.UpdatePost(post);
 
-            await _postRepository.UpdatePost(post);
-
-            return Ok(post);
+                var resultDto = _mapper.Map<PostDto>(post);
+                return Ok(resultDto);
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al actualizar el post", error = ex.Message });
+            }
         }
 
         [HttpDelete("dto/mapper/{id}")]
         public async Task<IActionResult> DeletePostDtoMapper(int id)
         {
+            // Validar que el ID sea válido
+            if (id <= 0)
+                return BadRequest(new { message = "El ID debe ser mayor que cero." });
+
             var post = await _postRepository.GetPostByIdAsync(id);
             if (post == null)
-                return NotFound("Post no encontrado.");
+                return NotFound(new { message = "Post no encontrado." });
 
-            await _postRepository.DeletePost(post);
-
-            return NoContent(); // 204 sin contenido
+            try
+            {
+                await _postRepository.DeletePost(post);
+                return NoContent(); // 204 sin contenido
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(500, new { message = "Error al eliminar el post", error = ex.Message });
+            }
         }
 
         #endregion

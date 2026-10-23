@@ -12,23 +12,118 @@ namespace ControlInventario.Api.Controllers
     {
         private readonly IMovimientoInventarioRepository _movimientoInventarioRepository;
         private readonly CrearMovimientoDtoValidator _crearValidator;
+        private readonly RegistrarEntradaDtoValidator _entradaValidator;
 
         public MovimientoInventarioController(
             IMovimientoInventarioRepository movimientoInventarioRepository,
-            CrearMovimientoDtoValidator crearValidator)
+            CrearMovimientoDtoValidator crearValidator,
+            RegistrarEntradaDtoValidator entradaValidator)
         {
             _movimientoInventarioRepository = movimientoInventarioRepository;
             _crearValidator = crearValidator;
+            _entradaValidator = entradaValidator;
         }
 
         /// <summary>
-        /// Registra una entrada o una salida de inventario y actualiza el stock del
-        /// producto dentro de la misma transacción (RN-05, RN-06).
+        /// CU-03: Registrar Entrada de Mercadería.
         /// </summary>
-        [HttpPost]
-        public async Task<IActionResult> RegistrarMovimiento([FromBody] CrearMovimientoDto movimientoDto)
+        [HttpPost("/api/inventory/inbound")]
+        public async Task<IActionResult> RegistrarEntrada(
+            [FromBody] RegistrarEntradaDto entradaDto)
         {
-            var validationResult = await _crearValidator.ValidateAsync(movimientoDto);
+            var validationResult =
+                await _entradaValidator.ValidateAsync(entradaDto);
+
+            if (!validationResult.IsValid)
+            {
+                return BadRequest(new
+                {
+                    message = "Error de validación",
+                    errors = validationResult.Errors.Select(e => new
+                    {
+                        field = e.PropertyName,
+                        error = e.ErrorMessage
+                    })
+                });
+            }
+
+            try
+            {
+                var movimiento = new MovimientoInventario
+                {
+                    ProductoId = entradaDto.ProductoId,
+                    UsuarioId = entradaDto.UsuarioId,
+                    TipoMovimiento = "ENTRADA",
+                    Motivo = "COMPRA_PROVEEDOR",
+                    Cantidad = entradaDto.Cantidad,
+                    Observaciones = entradaDto.Observacion,
+                    FechaRegistro = DateTime.UtcNow
+                };
+
+                var resultado =
+                    await _movimientoInventarioRepository
+                        .RegistrarMovimientoAsync(movimiento);
+
+                if (!resultado.Registrado)
+                {
+                    switch (resultado.Motivo)
+                    {
+                        case MotivoRechazoMovimiento.ProductoNoEncontrado:
+                            return NotFound(new
+                            {
+                                message = "Producto no encontrado."
+                            });
+
+                        case MotivoRechazoMovimiento.UsuarioNoEncontrado:
+                            return NotFound(new
+                            {
+                                message = "Usuario no encontrado."
+                            });
+
+                        case MotivoRechazoMovimiento.ProductoInactivo:
+                            return BadRequest(new
+                            {
+                                message = "El producto está desactivado y no admite entradas de inventario."
+                            });
+
+                        default:
+                            return BadRequest(new
+                            {
+                                message = "No fue posible registrar la entrada de mercadería."
+                            });
+                    }
+                }
+
+                return Ok(new
+                {
+                    message = "Entrada de mercadería registrada correctamente.",
+                    movimientoId = movimiento.Id,
+                    productoId = movimiento.ProductoId,
+                    usuarioId = movimiento.UsuarioId,
+                    tipoMovimiento = movimiento.TipoMovimiento,
+                    motivo = movimiento.Motivo,
+                    cantidadIngresada = movimiento.Cantidad,
+                    stockResultante = resultado.StockResultante,
+                    observaciones = movimiento.Observaciones,
+                    fechaRegistro = movimiento.FechaRegistro
+                });
+            }
+            catch (Exception)
+            {
+                return StatusCode(500, new
+                {
+                    message = "Error al registrar la entrada de mercadería."
+                });
+            }
+        }
+
+        [HttpPost]
+        public async Task<IActionResult> RegistrarMovimiento(
+            [FromBody] CrearMovimientoDto movimientoDto)
+        {
+            var validationResult =
+                await _crearValidator.ValidateAsync(movimientoDto);
+
             if (!validationResult.IsValid)
             {
                 return BadRequest(new
@@ -55,7 +150,9 @@ namespace ControlInventario.Api.Controllers
                     FechaRegistro = DateTime.UtcNow
                 };
 
-                var resultado = await _movimientoInventarioRepository.RegistrarMovimientoAsync(movimiento);
+                var resultado =
+                    await _movimientoInventarioRepository
+                        .RegistrarMovimientoAsync(movimiento);
 
                 if (!resultado.Registrado)
                 {
@@ -68,7 +165,10 @@ namespace ControlInventario.Api.Controllers
                             return NotFound(new { message = "Usuario no encontrado." });
 
                         case MotivoRechazoMovimiento.ProductoInactivo:
-                            return BadRequest(new { message = "El producto está desactivado; no admite movimientos de inventario." });
+                            return BadRequest(new
+                            {
+                                message = "El producto está desactivado; no admite movimientos de inventario."
+                            });
 
                         case MotivoRechazoMovimiento.StockInsuficiente:
                             return Conflict(new
@@ -78,7 +178,10 @@ namespace ControlInventario.Api.Controllers
                             });
 
                         default:
-                            return BadRequest(new { message = "No fue posible registrar el movimiento." });
+                            return BadRequest(new
+                            {
+                                message = "No fue posible registrar el movimiento."
+                            });
                     }
                 }
 
@@ -95,29 +198,44 @@ namespace ControlInventario.Api.Controllers
                     StockResultante = resultado.StockResultante
                 };
 
-                return CreatedAtAction(nameof(GetMovimientoById), new { id = movimientoCreado.Id }, movimientoCreado);
+                return CreatedAtAction(
+                    nameof(GetMovimientoById),
+                    new { id = movimientoCreado.Id },
+                    movimientoCreado);
             }
             catch (Exception)
             {
-                // No se expone el detalle interno de la base de datos al cliente.
-                return StatusCode(500, new { message = "Error al registrar el movimiento de inventario" });
+                return StatusCode(500, new
+                {
+                    message = "Error al registrar el movimiento de inventario"
+                });
             }
         }
 
-        /// <summary>
-        /// Consulta un movimiento por su identificador.
-        /// </summary>
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetMovimientoById(int id)
         {
             if (id <= 0)
-                return BadRequest(new { message = "El ID debe ser mayor que cero." });
+            {
+                return BadRequest(new
+                {
+                    message = "El ID debe ser mayor que cero."
+                });
+            }
 
             try
             {
-                var movimiento = await _movimientoInventarioRepository.GetMovimientoByIdAsync(id);
+                var movimiento =
+                    await _movimientoInventarioRepository
+                        .GetMovimientoByIdAsync(id);
+
                 if (movimiento == null)
-                    return NotFound(new { message = "Movimiento no encontrado." });
+                {
+                    return NotFound(new
+                    {
+                        message = "Movimiento no encontrado."
+                    });
+                }
 
                 return Ok(new MovimientoInventarioDto
                 {
@@ -133,7 +251,10 @@ namespace ControlInventario.Api.Controllers
             }
             catch (Exception)
             {
-                return StatusCode(500, new { message = "Error al obtener el movimiento de inventario" });
+                return StatusCode(500, new
+                {
+                    message = "Error al obtener el movimiento de inventario"
+                });
             }
         }
     }

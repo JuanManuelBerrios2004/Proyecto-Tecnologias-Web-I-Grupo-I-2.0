@@ -1,6 +1,29 @@
-@ControlInventario.Api_HostAddress = http://localhost:5233
+@ControlInventario_Api_HostAddress = https://localhost:7247
 
-GET {{ControlInventario.Api_HostAddress}}/weatherforecast/
-Accept: application/json
+### CU-03 - Registrar Entrada de Mercadería
+
+POST {{ControlInventario_Api_HostAddress}}/api/inventory/inbound
+Content-Type: application/json
+
+{
+  "productoId": 1,
+  "usuarioId": 1,
+  "cantidad": 10,
+  "observacion": "Compra recibida del proveedor"
+}
+
+###
+
+### CU-03 - Prueba de error RN-06
+
+POST {{ControlInventario_Api_HostAddress}}/api/inventory/inbound
+Content-Type: application/json
+
+{
+  "productoId": 1,
+  "usuarioId": 1,
+  "cantidad": 0,
+  "observacion": "Prueba cantidad inválida"
+}
 
 ###

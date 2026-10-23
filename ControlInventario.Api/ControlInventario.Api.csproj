@@ -1,0 +1,21 @@
+<Project Sdk="Microsoft.NET.Sdk.Web">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>ControlInventario.Api</AssemblyName>
+    <RootNamespace>ControlInventario.Api</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ControlInventario.Core\ControlInventario.Core.csproj" />
+    <ProjectReference Include="..\ControlInventario.Infrastructure\ControlInventario.Infrastructure.csproj" />
+    <ProjectReference Include="..\ControlInventario.Services\ControlInventario.Services.csproj" />
+  </ItemGroup>
+
+</Project>

@@ -1,6 +1,8 @@
+using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
+using ControlInventario.Api.Response;
 using ControlInventario.Core.DTOs;
 using ControlInventario.Core.Entities;
 using ControlInventario.Core.Interfaces;
@@ -14,16 +16,19 @@ namespace ControlInventario.Api.Controllers
     public class ProductoController : ControllerBase
     {
         private readonly IProductoRepository _productoRepository;
+        private readonly IMapper _mapper;
         private readonly InventarioContext _inventarioContext;
         private readonly CrearProductoDtoValidator _crearValidator;
         private readonly ActualizarProductoDtoValidator _actualizarValidator;
 
-        public ProductoController(IProductoRepository productoRepository,
+        public ProductoController(IMapper mapper,
+            IProductoRepository productoRepository,
             InventarioContext inventarioContext,
             CrearProductoDtoValidator crearValidator,
             ActualizarProductoDtoValidator actualizarValidator)
         {
             _productoRepository = productoRepository;
+            _mapper = mapper;
             _inventarioContext = inventarioContext;
             _crearValidator = crearValidator;
             _actualizarValidator = actualizarValidator;
@@ -43,8 +48,10 @@ namespace ControlInventario.Api.Controllers
             try
             {
                 var productos = await _productoRepository.GetProductosAsync(nombre, categoriaId, soloActivos);
-                var productosDto = productos.Select(MapearProducto);
-                return Ok(productosDto);
+                var productosDto = _mapper.Map<IEnumerable<ProductoDto>>(productos);
+
+                var response = new ApiResponse<IEnumerable<ProductoDto>>(productosDto);
+                return Ok(response);
             }
             catch (Exception ex)
             {
@@ -67,7 +74,10 @@ namespace ControlInventario.Api.Controllers
                 if (producto == null)
                     return NotFound(new { message = "Producto no encontrado." });
 
-                return Ok(MapearProducto(producto));
+                var productoDto = _mapper.Map<ProductoDto>(producto);
+
+                var response = new ApiResponse<ProductoDto>(productoDto);
+                return Ok(response);
             }
             catch (Exception ex)
             {
@@ -92,8 +102,11 @@ namespace ControlInventario.Api.Controllers
                 // explícitamente para consultar también los inactivos.
                 var filtrarSoloActivos = soloActivos ?? true;
 
+                // El repositorio ya proyecta a ProductoStockDto: no hace falta mapear de nuevo.
                 var stock = await _productoRepository.GetStockProductosAsync(nombre, categoriaId, filtrarSoloActivos, stockMinimo);
-                return Ok(stock);
+
+                var response = new ApiResponse<IEnumerable<ProductoStockDto>>(stock);
+                return Ok(response);
             }
             catch (Exception ex)
             {
@@ -133,25 +146,18 @@ namespace ControlInventario.Api.Controllers
 
             try
             {
-                var producto = new Producto
-                {
-                    CategoriaId = productoDto.CategoriaId,
-                    Nombre = productoDto.Nombre,
-                    PrecioCompra = productoDto.PrecioCompra,
-                    PrecioVenta = productoDto.PrecioVenta,
-                    // RN-01: el producto nace con stock cero. La mercadería inicial se
-                    // registra después mediante un movimiento de tipo ENTRADA.
-                    StockActual = 0,
-                    // `Id`, `Activo` y los campos de auditoría los controla el backend.
-                    Activo = true,
-                    CreadoEn = DateTime.UtcNow,
-                    ActualizadoEn = DateTime.UtcNow
-                };
+                // RN-01: ProductoProfile fija stock 0, Activo = true y las fechas de auditoría.
+                // La mercadería inicial se registra después mediante un movimiento de tipo ENTRADA.
+                var producto = _mapper.Map<Producto>(productoDto);
 
                 await _productoRepository.InsertProducto(producto);
 
+                // Se vuelve a consultar para que la navegación `Categoria` esté cargada.
                 var creado = await _productoRepository.GetProductoByIdAsync(producto.Id);
-                return Created($"api/producto/{producto.Id}", creado == null ? MapearProducto(producto) : MapearProducto(creado));
+                var resultDto = _mapper.Map<ProductoDto>(creado ?? producto);
+
+                var response = new ApiResponse<ProductoDto>(resultDto);
+                return Created($"api/producto/{producto.Id}", response);
             }
             catch (DbUpdateException ex) when (EsErrorMySql(ex, 1062))
             {
@@ -193,8 +199,8 @@ namespace ControlInventario.Api.Controllers
                 });
             }
 
-            var existente = await _productoRepository.GetProductoByIdAsync(id);
-            if (existente == null)
+            var productoExistente = await _productoRepository.GetProductoByIdAsync(id);
+            if (productoExistente == null)
                 return NotFound(new { message = "Producto no encontrado." });
 
             if (!await ExisteCategoriaAsync(productoDto.CategoriaId))
@@ -204,25 +210,19 @@ namespace ControlInventario.Api.Controllers
 
             try
             {
-                var producto = new Producto
-                {
-                    Id = id,
-                    CategoriaId = productoDto.CategoriaId,
-                    Nombre = productoDto.Nombre,
-                    PrecioCompra = productoDto.PrecioCompra,
-                    PrecioVenta = productoDto.PrecioVenta,
-                    // RN-02: el stock no se envía ni se sobrescribe desde el catálogo;
-                    // el repositorio conserva el stock actual del producto.
-                    StockActual = existente.StockActual,
-                    // La desactivación es lógica: el cliente no decide si el producto está activo.
-                    Activo = existente.Activo
-                };
+                // Se mapea sobre la entidad existente: ProductoProfile ignora StockActual (RN-02),
+                // Activo, CreadoEn y ActualizadoEn, por lo que conservan su valor actual.
+                _mapper.Map(productoDto, productoExistente);
 
-                // El repositorio conserva `CreadoEn` y actualiza `ActualizadoEn`.
-                await _productoRepository.UpdateProducto(producto);
+                // El repositorio actualiza `ActualizadoEn`.
+                await _productoRepository.UpdateProducto(productoExistente);
 
+                // Se vuelve a consultar para que `Categoria` refleje un posible cambio de categoría.
                 var actualizado = await _productoRepository.GetProductoByIdAsync(id);
-                return Ok(actualizado == null ? MapearProducto(producto) : MapearProducto(actualizado));
+                var resultDto = _mapper.Map<ProductoDto>(actualizado ?? productoExistente);
+
+                var response = new ApiResponse<ProductoDto>(resultDto);
+                return Ok(response);
             }
             catch (DbUpdateException ex) when (EsErrorMySql(ex, 1062))
             {
@@ -269,27 +269,7 @@ namespace ControlInventario.Api.Controllers
 
         #endregion
 
-        #region Mapeo y utilidades
-
-        /// <summary>
-        /// Mapeo manual de la entidad `Producto` al DTO de salida.
-        /// </summary>
-        private static ProductoDto MapearProducto(Producto producto)
-        {
-            return new ProductoDto
-            {
-                Id = producto.Id,
-                CategoriaId = producto.CategoriaId,
-                Nombre = producto.Nombre,
-                PrecioCompra = producto.PrecioCompra,
-                PrecioVenta = producto.PrecioVenta,
-                StockActual = producto.StockActual,
-                Activo = producto.Activo,
-                CreadoEn = producto.CreadoEn,
-                ActualizadoEn = producto.ActualizadoEn,
-                CategoriaNombre = producto.Categoria != null ? producto.Categoria.Nombre : null
-            };
-        }
+        #region Utilidades
 
         /// <summary>
         /// Comprueba que la categoría exista. `ICategoriaRepository` no se usa porque sus

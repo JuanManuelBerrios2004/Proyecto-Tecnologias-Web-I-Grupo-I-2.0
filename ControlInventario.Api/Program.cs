@@ -27,6 +27,7 @@ namespace ControlInventario.Api
             builder.Services.AddTransient<IProductoRepository, ProductoRepository>();
             builder.Services.AddTransient<IMovimientoInventarioRepository, MovimientoInventarioRepository>();
 
+
             builder.Services.AddControllers();
             // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
             builder.Services.AddOpenApi();
@@ -43,6 +44,7 @@ namespace ControlInventario.Api
             builder.Services.AddScoped<ProductoDtoValidator>();
             builder.Services.AddScoped<CrearMovimientoDtoValidator>();
             builder.Services.AddScoped<LoginDtoValidator>();
+            builder.Services.AddScoped<ConsultaStockQueryDtoValidator>();
 
             var app = builder.Build();
 

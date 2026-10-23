@@ -44,13 +44,11 @@ namespace ControlInventario.Core.Interfaces
         Task<bool> DesactivarProductoAsync(int id);
 
         /// <summary>
-        /// Consulta los productos y sus cantidades de stock disponible (CU-05).
-        /// Proyección de solo lectura: no expone columnas de auditoría ni datos de compra.
+        /// Consulta el stock disponible de los productos ACTIVOS (CU-05, RN-08).
+        /// Proyección de solo lectura: no altera el estado de los datos.
         /// </summary>
         /// <param name="nombre">Texto a buscar en `productos.Nombre`. Si es null o vacío no filtra por nombre.</param>
         /// <param name="categoriaId">Filtra por `productos.CategoriaId`. Si es null no filtra por categoría.</param>
-        /// <param name="soloActivos">Si es true, devuelve únicamente productos con `Activo = true`.</param>
-        /// <param name="stockMinimo">Si no es null, devuelve únicamente productos con `StockActual` mayor o igual al valor indicado.</param>
-        Task<IEnumerable<ProductoStockDto>> GetStockProductosAsync(string? nombre = null, int? categoriaId = null, bool? soloActivos = null, int? stockMinimo = null);
+        Task<IEnumerable<ProductoStockDto>> GetStockProductosAsync(string? nombre = null, int? categoriaId = null);
     }
 }

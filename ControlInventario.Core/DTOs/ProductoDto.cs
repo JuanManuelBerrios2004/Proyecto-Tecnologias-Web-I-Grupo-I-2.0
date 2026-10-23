@@ -39,8 +39,6 @@ namespace ControlInventario.Core.DTOs
 
         public int StockActual { get; set; }
 
-        public bool Activo { get; set; }
-
         // Dato desnormalizado; no es una columna de `productos`.
         public string? CategoriaNombre { get; set; }
     }

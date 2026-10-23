@@ -107,9 +107,12 @@ namespace ControlInventario.Infrastructure.Repositories
             return true;
         }
 
-        public async Task<IEnumerable<ProductoStockDto>> GetStockProductosAsync(string? nombre = null, int? categoriaId = null, bool? soloActivos = null, int? stockMinimo = null)
+        public async Task<IEnumerable<ProductoStockDto>> GetStockProductosAsync(string? nombre = null, int? categoriaId = null)
         {
-            var query = _inventarioContext.Productos.AsNoTracking().AsQueryable();
+            
+            var query = _inventarioContext.Productos
+                .AsNoTracking()
+                .Where(p => p.Activo);
 
             var texto = nombre?.Trim();
             if (!string.IsNullOrEmpty(texto))
@@ -123,17 +126,8 @@ namespace ControlInventario.Infrastructure.Repositories
                 query = query.Where(p => p.CategoriaId == categoriaId.Value);
             }
 
-            if (soloActivos == true)
-            {
-                query = query.Where(p => p.Activo);
-            }
-
-            if (stockMinimo.HasValue)
-            {
-                query = query.Where(p => p.StockActual >= stockMinimo.Value);
-            }
-
             var stock = await query
+                .OrderBy(p => p.Nombre)
                 .Select(p => new ProductoStockDto
                 {
                     Id = p.Id,
@@ -141,7 +135,6 @@ namespace ControlInventario.Infrastructure.Repositories
                     Nombre = p.Nombre,
                     PrecioVenta = p.PrecioVenta,
                     StockActual = p.StockActual,
-                    Activo = p.Activo,
                     CategoriaNombre = p.Categoria != null ? p.Categoria.Nombre : null
                 })
                 .ToListAsync();

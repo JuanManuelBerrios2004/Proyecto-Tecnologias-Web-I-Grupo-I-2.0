@@ -5,51 +5,43 @@ using ControlInventario.Infrastructure.Data;
 
 namespace ControlInventario.Infrastructure.Repositories
 {
-    public class MovimientoInventarioRepository :
-        IMovimientoInventarioRepository
+    public class MovimientoInventarioRepository
+        : BaseRepository<MovimientoInventario>,
+          IMovimientoInventarioRepository
     {
-        private readonly InventarioContext _inventarioContext;
-
         public MovimientoInventarioRepository(
-            InventarioContext inventarioContext)
+            InventarioContext context)
+            : base(context)
         {
-            _inventarioContext = inventarioContext;
         }
 
         public async Task<IEnumerable<MovimientoInventario>>
             GetAllMovimientosAsync()
         {
-            return await _inventarioContext.MovimientosInventario
+            return await Context.MovimientosInventario
                 .AsNoTracking()
-                .OrderByDescending(m => m.FechaRegistro)
-                .ThenByDescending(m => m.Id)
+                .OrderByDescending(x => x.FechaRegistro)
+                .ThenByDescending(x => x.Id)
                 .ToListAsync();
         }
 
         public async Task<MovimientoInventario?>
             GetMovimientoByIdAsync(int id)
         {
-            return await _inventarioContext.MovimientosInventario
+            return await Context.MovimientosInventario
                 .AsNoTracking()
-                .FirstOrDefaultAsync(m => m.Id == id);
+                .FirstOrDefaultAsync(x => x.Id == id);
         }
 
         public async Task<IEnumerable<MovimientoInventario>>
             GetMovimientosByProductoAsync(int productoId)
         {
-            return await _inventarioContext.MovimientosInventario
+            return await Context.MovimientosInventario
                 .AsNoTracking()
-                .Where(m => m.ProductoId == productoId)
-                .OrderByDescending(m => m.FechaRegistro)
-                .ThenByDescending(m => m.Id)
+                .Where(x => x.ProductoId == productoId)
+                .OrderByDescending(x => x.FechaRegistro)
+                .ThenByDescending(x => x.Id)
                 .ToListAsync();
-        }
-
-        public async Task InsertMovimiento(
-            MovimientoInventario movimiento)
-        {
-            _inventarioContext.MovimientosInventario.Add(movimiento);
-            await _inventarioContext.SaveChangesAsync();
         }
 
         public async Task<ResultadoRegistroMovimiento>
@@ -57,17 +49,15 @@ namespace ControlInventario.Infrastructure.Repositories
                 MovimientoInventario movimiento)
         {
             await using var transaccion =
-                await _inventarioContext.Database
-                    .BeginTransactionAsync(
-                        System.Data.IsolationLevel.ReadCommitted);
+                await Context.Database.BeginTransactionAsync(
+                    System.Data.IsolationLevel.ReadCommitted);
 
             try
             {
-                var producto =
-                    await _inventarioContext.Productos
-                        .AsNoTracking()
-                        .FirstOrDefaultAsync(
-                            p => p.Id == movimiento.ProductoId);
+                var producto = await Context.Productos
+                    .AsNoTracking()
+                    .FirstOrDefaultAsync(
+                        x => x.Id == movimiento.ProductoId);
 
                 if (producto == null)
                 {
@@ -86,11 +76,10 @@ namespace ControlInventario.Infrastructure.Repositories
                         producto.StockActual);
                 }
 
-                var existeUsuario =
-                    await _inventarioContext.Usuarios
-                        .AsNoTracking()
-                        .AnyAsync(
-                            u => u.Id == movimiento.UsuarioId);
+                var existeUsuario = await Context.Usuarios
+                    .AsNoTracking()
+                    .AnyAsync(
+                        x => x.Id == movimiento.UsuarioId);
 
                 if (!existeUsuario)
                 {
@@ -100,7 +89,7 @@ namespace ControlInventario.Infrastructure.Repositories
                         MotivoRechazoMovimiento.UsuarioNoEncontrado);
                 }
 
-                var esEntrada = string.Equals(
+                bool esEntrada = string.Equals(
                     movimiento.TipoMovimiento,
                     "ENTRADA",
                     StringComparison.OrdinalIgnoreCase);
@@ -110,71 +99,69 @@ namespace ControlInventario.Infrastructure.Repositories
                 if (esEntrada)
                 {
                     filasAfectadas =
-                        await _inventarioContext.Database
-                            .ExecuteSqlInterpolatedAsync(
-                                $@"
+                        await Context.Database
+                            .ExecuteSqlInterpolatedAsync($@"
                                 UPDATE productos
                                 SET stock_actual =
                                     stock_actual + {movimiento.Cantidad}
-                                WHERE id =
-                                    {movimiento.ProductoId}
+                                WHERE id = {movimiento.ProductoId}
                                 AND activo = 1
-                                ");
+                            ");
                 }
                 else
                 {
                     filasAfectadas =
-                        await _inventarioContext.Database
-                            .ExecuteSqlInterpolatedAsync(
-                                $@"
+                        await Context.Database
+                            .ExecuteSqlInterpolatedAsync($@"
                                 UPDATE productos
                                 SET stock_actual =
                                     stock_actual - {movimiento.Cantidad}
-                                WHERE id =
-                                    {movimiento.ProductoId}
+                                WHERE id = {movimiento.ProductoId}
                                 AND activo = 1
-                                AND stock_actual >=
-                                    {movimiento.Cantidad}
-                                ");
+                                AND stock_actual >= {movimiento.Cantidad}
+                            ");
                 }
 
                 if (filasAfectadas == 0)
                 {
                     await transaccion.RollbackAsync();
 
-                    var actual =
-                        await _inventarioContext.Productos
+                    var productoActual =
+                        await Context.Productos
                             .AsNoTracking()
                             .FirstOrDefaultAsync(
-                                p => p.Id == movimiento.ProductoId);
+                                x => x.Id == movimiento.ProductoId);
 
-                    if (actual == null)
+                    if (productoActual == null)
                     {
                         return ResultadoRegistroMovimiento.Rechazado(
                             MotivoRechazoMovimiento.ProductoNoEncontrado);
                     }
 
-                    if (!actual.Activo)
+                    if (!productoActual.Activo)
                     {
                         return ResultadoRegistroMovimiento.Rechazado(
                             MotivoRechazoMovimiento.ProductoInactivo,
-                            actual.StockActual);
+                            productoActual.StockActual);
                     }
 
                     return ResultadoRegistroMovimiento.Rechazado(
                         MotivoRechazoMovimiento.StockInsuficiente,
-                        actual.StockActual);
+                        productoActual.StockActual);
                 }
 
-                _inventarioContext.MovimientosInventario.Add(movimiento);
+                await Context.MovimientosInventario
+                    .AddAsync(movimiento);
 
-                await _inventarioContext.SaveChangesAsync();
+                await Context.SaveChangesAsync();
 
-                var stockResultante =
-                    await _inventarioContext.Productos
+                int stockResultante =
+                    await Context.Productos
                         .AsNoTracking()
-                        .Where(p => p.Id == movimiento.ProductoId)
-                        .Select(p => p.StockActual)
+                        .Where(
+                            x => x.Id == movimiento.ProductoId)
+                        .Select(
+                            x => x.StockActual)
                         .FirstAsync();
 
                 await transaccion.CommitAsync();
@@ -185,6 +172,7 @@ namespace ControlInventario.Infrastructure.Repositories
             catch
             {
                 await transaccion.RollbackAsync();
+
                 throw;
             }
         }

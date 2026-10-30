@@ -2,60 +2,63 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ControlInventario.Core.Entities;
 
-namespace ControlInventario.Infrastructure.Data.Configurations
+namespace ControlInventario.Infrastructure
+    .Data.Configurations
 {
-    public class ProductoConfiguration :
-        IEntityTypeConfiguration<Producto>
+    public class ProductoConfiguration
+        : IEntityTypeConfiguration<Producto>
     {
-        public void Configure(EntityTypeBuilder<Producto> entity)
+        public void Configure(
+            EntityTypeBuilder<Producto> entity)
         {
             entity.ToTable("productos");
 
-            entity.HasKey(e => e.Id);
+            entity.HasKey(x => x.Id);
 
-            entity.Property(e => e.Id)
+            entity.Property(x => x.Id)
                 .HasColumnName("id")
                 .ValueGeneratedOnAdd();
 
-            entity.Property(e => e.CategoriaId)
+            entity.Property(x => x.CategoriaId)
                 .HasColumnName("categoria_id")
                 .IsRequired();
 
-            entity.Property(e => e.Nombre)
+            entity.Property(x => x.Nombre)
                 .HasColumnName("nombre")
                 .HasMaxLength(100)
                 .IsRequired();
 
-            entity.Property(e => e.PrecioCompra)
+            entity.Property(x => x.PrecioCompra)
                 .HasColumnName("precio_compra")
-                .HasColumnType("decimal(10,2)");
+                .HasColumnType("decimal(10,2)")
+                .IsRequired();
 
-            entity.Property(e => e.PrecioVenta)
+            entity.Property(x => x.PrecioVenta)
                 .HasColumnName("precio_venta")
-                .HasColumnType("decimal(10,2)");
+                .HasColumnType("decimal(10,2)")
+                .IsRequired();
 
-            entity.Property(e => e.StockActual)
+            entity.Property(x => x.StockActual)
                 .HasColumnName("stock_actual")
-                .HasDefaultValue(0);
+                .HasDefaultValue(0)
+                .IsRequired();
 
-            entity.Property(e => e.Activo)
+            entity.Property(x => x.Activo)
                 .HasColumnName("activo")
-                .HasDefaultValue(true);
+                .HasDefaultValue(true)
+                .IsRequired();
 
-            entity.Property(e => e.CreadoEn)
+            entity.Property(x => x.CreadoEn)
                 .HasColumnName("creado_en")
                 .HasColumnType("timestamp")
-                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+                .HasDefaultValueSql(
+                    "CURRENT_TIMESTAMP");
 
-            entity.Property(e => e.ActualizadoEn)
-                .HasColumnName("actualizado_en")
-                .HasColumnType("timestamp")
-                .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-            entity.HasOne(d => d.Categoria)
-                .WithMany(p => p.Productos)
-                .HasForeignKey(d => d.CategoriaId)
-                .OnDelete(DeleteBehavior.Restrict);
+            entity.HasOne(x => x.Categoria)
+                .WithMany(x => x.Productos)
+                .HasForeignKey(x => x.CategoriaId)
+                .OnDelete(
+                    DeleteBehavior.Restrict);
         }
     }
 }

@@ -1,5 +1,3 @@
-using System;
-using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ControlInventario.Core.Entities;
@@ -12,7 +10,6 @@ public partial class Producto
 
     public string Nombre { get; set; } = null!;
 
-    // La tabla `productos` no tiene columna de descripción.
     [NotMapped]
     public string? Descripcion { get; set; }
 
@@ -26,9 +23,20 @@ public partial class Producto
 
     public DateTime CreadoEn { get; set; }
 
+    // No existe esta columna en la BD actual.
+    [NotMapped]
     public DateTime ActualizadoEn { get; set; }
 
-    public virtual Categoria? Categoria { get; set; } = null!;
+    public virtual Categoria? Categoria
+    {
+        get;
+        set;
+    } = null!;
 
-    public virtual ICollection<MovimientoInventario> Movimientos { get; set; } = new List<MovimientoInventario>();
+    public virtual ICollection<MovimientoInventario>
+        Movimientos
+    {
+        get;
+        set;
+    } = new List<MovimientoInventario>();
 }

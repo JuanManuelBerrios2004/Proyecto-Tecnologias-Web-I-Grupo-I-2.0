@@ -12,7 +12,7 @@ namespace ControlInventario.Infrastructure.Repositories
         protected readonly DbSet<T> Entity;
 
         public BaseRepository(InventarioContext context)
-        {
+        {   
             Context = context;
             Entity = context.Set<T>();
         }

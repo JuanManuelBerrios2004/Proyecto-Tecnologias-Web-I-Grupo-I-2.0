@@ -23,18 +23,9 @@ public partial class Producto
 
     public DateTime CreadoEn { get; set; }
 
-    // No existe esta columna en la BD actual.
-    [NotMapped]
-    public DateTime ActualizadoEn { get; set; }
+    public virtual Categoria? Categoria { get; set; } = null!;
 
-    public virtual Categoria? Categoria
-    {
-        get;
-        set;
-    } = null!;
-
-    public virtual ICollection<MovimientoInventario>
-        Movimientos
+    public virtual ICollection<MovimientoInventario> Movimientos
     {
         get;
         set;

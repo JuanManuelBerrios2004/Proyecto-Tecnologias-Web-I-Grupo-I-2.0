@@ -28,7 +28,7 @@ namespace ControlInventario.Api.Controllers
             _crearValidator = crearValidator;
             _entradaValidator = entradaValidator;
         }
-
+        
         /// <summary>
         /// CU-03: Registrar entrada de mercadería.
         /// </summary>

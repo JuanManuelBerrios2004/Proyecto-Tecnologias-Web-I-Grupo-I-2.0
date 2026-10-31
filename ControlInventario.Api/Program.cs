@@ -5,6 +5,9 @@ using ControlInventario.Infrastructure.Data;
 using ControlInventario.Infrastructure.Mappings;
 using ControlInventario.Infrastructure.Repositories;
 using ControlInventario.Services.Validators;
+using ControlInventario.Api.Filters;
+using ControlInventario.Services.Interfaces;
+using ControlInventario.Services.Services;
 namespace ControlInventario.Api
 {
     public class Program

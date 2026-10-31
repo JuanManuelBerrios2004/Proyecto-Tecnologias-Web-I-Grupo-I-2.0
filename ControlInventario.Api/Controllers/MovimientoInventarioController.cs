@@ -20,7 +20,7 @@ namespace ControlInventario.Api.Controllers
             _movimientoInventarioRepository = movimientoInventarioRepository;
             _crearValidator = crearValidator;
         }
-
+        
         /// <summary>
         /// Registra una entrada o una salida de inventario y actualiza el stock del
         /// producto dentro de la misma transacción (RN-05, RN-06).

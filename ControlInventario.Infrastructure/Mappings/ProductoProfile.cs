@@ -34,8 +34,6 @@ namespace ControlInventario.Infrastructure.Mappings
 					opt => opt.MapFrom(src => true))
 				.ForMember(dest => dest.CreadoEn,
 					opt => opt.MapFrom(src => DateTime.UtcNow))
-				.ForMember(dest => dest.ActualizadoEn,
-					opt => opt.MapFrom(src => DateTime.UtcNow))
 				.ForMember(dest => dest.Descripcion,
 					opt => opt.Ignore())
 				.ForMember(dest => dest.Categoria,
@@ -53,8 +51,6 @@ namespace ControlInventario.Infrastructure.Mappings
 					opt => opt.Ignore())
 				.ForMember(dest => dest.CreadoEn,
 					opt => opt.Ignore())
-				.ForMember(dest => dest.ActualizadoEn,
-					opt => opt.MapFrom(src => DateTime.UtcNow))
 				.ForMember(dest => dest.Descripcion,
 					opt => opt.Ignore())
 				.ForMember(dest => dest.Categoria,

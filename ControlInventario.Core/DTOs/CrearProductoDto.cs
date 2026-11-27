@@ -4,7 +4,7 @@ namespace ControlInventario.Core.DTOs
 {
     /// <summary>
     /// Datos de entrada para crear un producto (CU-02).
-    /// No expone `Id`, `Activo`, `CreadoEn` ni `ActualizadoEn`: esos valores los controla el backend.
+    /// No expone `Id`, `Activo` ni `CreadoEn`: esos valores los controla el backend.
     /// `StockActual` es nullable solo para poder detectar un envío explícito del cliente
     /// (RN-02): el stock siempre nace en cero y solo se modifica con movimientos.
     /// </summary>

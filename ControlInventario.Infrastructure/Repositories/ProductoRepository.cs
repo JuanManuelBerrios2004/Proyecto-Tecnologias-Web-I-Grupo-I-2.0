@@ -85,7 +85,6 @@ namespace ControlInventario.Infrastructure.Repositories
             // RN-02: el stock nunca se sobrescribe desde el catálogo; solo cambia con movimientos.
             existente.Activo = producto.Activo;
             // `CreadoEn` no se modifica: conserva la fecha de alta original.
-            existente.ActualizadoEn = DateTime.UtcNow;
 
             await _inventarioContext.SaveChangesAsync();
         }
@@ -101,7 +100,6 @@ namespace ControlInventario.Infrastructure.Repositories
             }
 
             producto.Activo = false;
-            producto.ActualizadoEn = DateTime.UtcNow;
 
             await _inventarioContext.SaveChangesAsync();
             return true;

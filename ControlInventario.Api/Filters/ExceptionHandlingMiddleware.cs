@@ -26,7 +26,7 @@ namespace ControlInventario.Api.Filters
             {
                 await _next(context);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!context.Response.HasStarted)
             {
                 // El log guarda el error completo para el desarrollador.
                 _logger.LogError(ex, "Excepción capturada por el Middleware Global.");

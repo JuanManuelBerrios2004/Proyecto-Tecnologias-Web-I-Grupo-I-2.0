@@ -20,18 +20,21 @@ namespace ControlInventario.Api.Controllers
         private readonly InventarioContext _inventarioContext;
         private readonly CrearProductoDtoValidator _crearValidator;
         private readonly ActualizarProductoDtoValidator _actualizarValidator;
+        private readonly ConsultaStockQueryDtoValidator _stockValidator;
 
         public ProductoController(IMapper mapper,
             IProductoRepository productoRepository,
             InventarioContext inventarioContext,
             CrearProductoDtoValidator crearValidator,
-            ActualizarProductoDtoValidator actualizarValidator)
+            ActualizarProductoDtoValidator actualizarValidator,
+            ConsultaStockQueryDtoValidator stockValidator)
         {
             _productoRepository = productoRepository;
             _mapper = mapper;
             _inventarioContext = inventarioContext;
             _crearValidator = crearValidator;
             _actualizarValidator = actualizarValidator;
+            _stockValidator = stockValidator;
         }
 
         #region Consultas (GET)
@@ -53,9 +56,9 @@ namespace ControlInventario.Api.Controllers
                 var response = new ApiResponse<IEnumerable<ProductoDto>>(productosDto);
                 return Ok(response);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, new { message = "Error al obtener los productos", error = ex.Message });
+                return StatusCode(500, new { message = "Error al obtener los productos" });
             }
         }
 
@@ -79,38 +82,43 @@ namespace ControlInventario.Api.Controllers
                 var response = new ApiResponse<ProductoDto>(productoDto);
                 return Ok(response);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, new { message = "Error al obtener el producto", error = ex.Message });
+                return StatusCode(500, new { message = "Error al obtener el producto" });
             }
         }
 
         /// <summary>
-        /// Consulta el stock disponible de los productos (CU-05).
-        /// Si no se indica `soloActivos`, se muestran únicamente los productos activos.
+        /// Consulta el stock de productos activos por nombre y categoría (CU-05).
+        /// Solo admite soloActivos=true. El parámetro stockMinimo no está soportado.
         /// </summary>
         [HttpGet("stock")]
-        public async Task<IActionResult> GetStockProductos(
-            [FromQuery] string? nombre,
-            [FromQuery] int? categoriaId,
-            [FromQuery] bool? soloActivos,
-            [FromQuery] int? stockMinimo)
+        public async Task<IActionResult> GetStockProductos([FromQuery] ConsultaStockQueryDto query)
         {
+            var validationResult = await _stockValidator.ValidateAsync(query);
+            if (!validationResult.IsValid)
+            {
+                return BadRequest(new
+                {
+                    message = "Error de validación",
+                    errors = validationResult.Errors.Select(e => new
+                    {
+                        field = e.PropertyName,
+                        error = e.ErrorMessage
+                    })
+                });
+            }
+
             try
             {
-                // RN-08: por defecto solo se listan productos activos; `soloActivos=false` debe enviarse
-                // explícitamente para consultar también los inactivos.
-                var filtrarSoloActivos = soloActivos ?? true;
-
-                // El repositorio ya proyecta a ProductoStockDto: no hace falta mapear de nuevo.
-                var stock = await _productoRepository.GetStockProductosAsync(nombre, categoriaId, filtrarSoloActivos, stockMinimo);
+                var stock = await _productoRepository.GetStockProductosAsync(query.Nombre, query.CategoriaId);
 
                 var response = new ApiResponse<IEnumerable<ProductoStockDto>>(stock);
                 return Ok(response);
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, new { message = "Error al obtener el stock de productos", error = ex.Message });
+                return StatusCode(500, new { message = "Error al obtener el stock de productos" });
             }
         }
 
@@ -169,9 +177,9 @@ namespace ControlInventario.Api.Controllers
                 // Llave foránea `FK_productos_categorias` inexistente.
                 return BadRequest(new { message = "La categoría indicada no existe." });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, new { message = "Error al crear el producto", error = ex.Message });
+                return StatusCode(500, new { message = "Error al crear el producto" });
             }
         }
 
@@ -211,10 +219,9 @@ namespace ControlInventario.Api.Controllers
             try
             {
                 // Se mapea sobre la entidad existente: ProductoProfile ignora StockActual (RN-02),
-                // Activo, CreadoEn y ActualizadoEn, por lo que conservan su valor actual.
+                // Activo y CreadoEn, por lo que conservan su valor actual.
                 _mapper.Map(productoDto, productoExistente);
 
-                // El repositorio actualiza `ActualizadoEn`.
                 await _productoRepository.UpdateProducto(productoExistente);
 
                 // Se vuelve a consultar para que `Categoria` refleje un posible cambio de categoría.
@@ -234,9 +241,9 @@ namespace ControlInventario.Api.Controllers
                 // Llave foránea `FK_productos_categorias` inexistente.
                 return BadRequest(new { message = "La categoría indicada no existe." });
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, new { message = "Error al actualizar el producto", error = ex.Message });
+                return StatusCode(500, new { message = "Error al actualizar el producto" });
             }
         }
 
@@ -261,9 +268,9 @@ namespace ControlInventario.Api.Controllers
 
                 return NoContent(); // 204 sin contenido
             }
-            catch (Exception ex)
+            catch (Exception)
             {
-                return StatusCode(500, new { message = "Error al desactivar el producto", error = ex.Message });
+                return StatusCode(500, new { message = "Error al desactivar el producto" });
             }
         }
 

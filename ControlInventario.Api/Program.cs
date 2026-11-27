@@ -1,6 +1,6 @@
 using Microsoft.EntityFrameworkCore;
 
-using ControlInventario.Api.Middlewares;
+using ControlInventario.Api.Filters;
 
 using ControlInventario.Core.Interfaces;
 
@@ -42,14 +42,6 @@ namespace ControlInventario.Api
              */
 
             builder.Services.AddTransient<
-                IPostRepository,
-                PostRepository>();
-
-            builder.Services.AddTransient<
-                ICommentRepository,
-                CommentRepository>();
-
-            builder.Services.AddTransient<
                 IUsuarioRepository,
                 UsuarioRepository>();
 
@@ -77,26 +69,18 @@ namespace ControlInventario.Api
                 IMovimientoInventarioService,
                 MovimientoInventarioService>();
 
+            builder.Services.AddScoped<ISalidaMercaderiaService, SalidaMercaderiaService>();
 
             builder.Services.AddControllers();
 
             builder.Services.AddOpenApi();
 
             builder.Services.AddAutoMapper(
-                typeof(PostProfile).Assembly);
+                typeof(ProductoProfile).Assembly);
 
             /*
              * VALIDADORES EXISTENTES
              */
-
-            builder.Services.AddScoped<
-                PostDtoValidator>();
-
-            builder.Services.AddScoped<
-                CrearPostDtoValidator>();
-
-            builder.Services.AddScoped<
-                ActualizarPostDtoValidator>();
 
             builder.Services.AddScoped<
                 CrearProductoDtoValidator>();
@@ -120,15 +104,7 @@ namespace ControlInventario.Api
             builder.Services.AddScoped<
                 RegistrarEntradaDtoValidator>();
 
-            //Registrar Validadores de FluentValidator
-            builder.Services.AddScoped<PostDtoValidator>();
-            builder.Services.AddScoped<CrearPostDtoValidator>();
-            builder.Services.AddScoped<ActualizarPostDtoValidator>();
-            builder.Services.AddScoped<CrearProductoDtoValidator>();
-            builder.Services.AddScoped<ActualizarProductoDtoValidator>();
-            builder.Services.AddScoped<CategoriaDtoValidator>();
-            builder.Services.AddScoped<ProductoDtoValidator>();
-            builder.Services.AddScoped<CrearMovimientoDtoValidator>();
+            builder.Services.AddScoped<RegistrarSalidaDtoValidator>();
             builder.Services.AddScoped<LoginDtoValidator>();
             builder.Services.AddScoped<ConsultaStockQueryDtoValidator>();
 
@@ -145,7 +121,7 @@ namespace ControlInventario.Api
              */
 
             app.UseMiddleware<
-                ExceptionMiddleware>();
+                ExceptionHandlingMiddleware>();
 
             app.UseHttpsRedirection();
 

@@ -2,9 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using ControlInventario.Core.Entities;
 using ControlInventario.Core.Interfaces;
 using ControlInventario.Infrastructure.Data;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace ControlInventario.Infrastructure.Repositories
 {
@@ -17,34 +14,50 @@ namespace ControlInventario.Infrastructure.Repositories
             _inventarioContext = inventarioContext;
         }
 
-        public Task<IEnumerable<Usuario>> GetAllUsuariosAsync()
+        public async Task<IEnumerable<Usuario>> GetAllUsuariosAsync()
         {
-            throw new NotImplementedException();
+            return await _inventarioContext.Set<Usuario>()
+                .Include(u => u.Rol)
+                .ToListAsync();
         }
 
-        public Task<Usuario?> GetUsuarioByIdAsync(int id)
+        public async Task<Usuario?> GetUsuarioByIdAsync(int id)
         {
-            throw new NotImplementedException();
+            return await _inventarioContext.Set<Usuario>()
+                .Include(u => u.Rol)
+                .FirstOrDefaultAsync(u => u.Id == id);
         }
 
-        public Task<Usuario?> GetUsuarioByEmailAsync(string email)
+        public async Task<Usuario?> GetUsuarioByEmailAsync(string email)
         {
-            throw new NotImplementedException();
+            return await _inventarioContext.Set<Usuario>()
+                .Include(u => u.Rol)
+                .FirstOrDefaultAsync(u => u.Email == email);
         }
 
-        public Task InsertUsuario(Usuario usuario)
+        public async Task<Usuario?> GetByCredentialsAsync(string email)
         {
-            throw new NotImplementedException();
+            return await _inventarioContext.Set<Usuario>()
+                .Include(u => u.Rol)
+                .FirstOrDefaultAsync(u => u.Email == email);
         }
 
-        public Task UpdateUsuario(Usuario usuario)
+        public async Task InsertUsuario(Usuario usuario)
         {
-            throw new NotImplementedException();
+            await _inventarioContext.Set<Usuario>().AddAsync(usuario);
+            await _inventarioContext.SaveChangesAsync();
         }
 
-        public Task DeleteUsuario(Usuario usuario)
+        public async Task UpdateUsuario(Usuario usuario)
         {
-            throw new NotImplementedException();
+            _inventarioContext.Set<Usuario>().Update(usuario);
+            await _inventarioContext.SaveChangesAsync();
+        }
+
+        public async Task DeleteUsuario(Usuario usuario)
+        {
+            _inventarioContext.Set<Usuario>().Remove(usuario);
+            await _inventarioContext.SaveChangesAsync();
         }
     }
 }

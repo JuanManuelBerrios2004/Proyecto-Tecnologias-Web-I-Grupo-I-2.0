@@ -1,4 +1,8 @@
+using System.IdentityModel.Tokens.Jwt;
+using System.Text;
+using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.IdentityModel.Tokens;
 
 using ControlInventario.Api.Middlewares;
 
@@ -16,111 +20,85 @@ namespace ControlInventario.Api
 {
     public class Program
     {
-        public static void Main(
-            string[] args)
+        public static void Main(string[] args)
         {
-            var builder =
-                WebApplication.CreateBuilder(args);
+            var builder = WebApplication.CreateBuilder(args);
 
-            var connectionString =
-                builder.Configuration
-                    .GetConnectionString(
-                        "ConnectionMySql");
+            var connectionString = builder.Configuration
+                .GetConnectionString("ConnectionMySql");
 
-            builder.Services.AddDbContext<
-                InventarioContext>(
-                    options =>
+            builder.Services.AddDbContext<InventarioContext>(options =>
+            {
+                options.UseMySql(
+                    connectionString,
+                    ServerVersion.AutoDetect(connectionString));
+            });
+
+            
+            // * REPOSITORIOS EXISTENTES
+             
+            builder.Services.AddTransient<IPostRepository, PostRepository>();
+            builder.Services.AddTransient<ICommentRepository, CommentRepository>();
+            builder.Services.AddTransient<IUsuarioRepository, UsuarioRepository>();
+            builder.Services.AddTransient<ICategoriaRepository, CategoriaRepository>();
+            builder.Services.AddTransient<IProductoRepository, ProductoRepository>();
+
+            
+             //* REPOSITORIO Y SERVICE CU-03
+             
+            builder.Services.AddScoped<IMovimientoInventarioRepository, MovimientoInventarioRepository>();
+            builder.Services.AddScoped<IMovimientoInventarioService, MovimientoInventarioService>();
+
+           
+            // * UNIT OF WORK, DAPPER Y SEGURIDAD (CU-01 y CU-08)
+             
+            builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
+            builder.Services.AddScoped<IDapperContext, DapperContext>(); 
+            builder.Services.AddScoped<IAuthService, AuthService>();
+
+            
+            // * CONFIGURACIÓN JWT BEARER (CU-01 y CU-08)
+             
+            builder.Services.AddAuthentication(options =>
+            {
+                options.DefaultAuthenticateScheme = JwtBearerDefaults.AuthenticationScheme;
+                options.DefaultChallengeScheme = JwtBearerDefaults.AuthenticationScheme;
+            }).AddJwtBearer(options =>
+            {
+                options.TokenValidationParameters = new TokenValidationParameters
+                {
+                    ValidateIssuer = true,
+                    ValidateAudience = true,
+                    ValidateLifetime = true,
+                    ValidateIssuerSigningKey = true,
+                    ValidIssuer = builder.Configuration["Authentication:Issuer"],
+                    ValidAudience = builder.Configuration["Authentication:Audience"],
+                    IssuerSigningKey = new SymmetricSecurityKey(
+                        Encoding.UTF8.GetBytes(builder.Configuration["Authentication:SecretKey"]!))
+                };
+
+                options.Events = new JwtBearerEvents
+                {
+                    OnTokenValidated = context =>
                     {
-                        options.UseMySql(
-                            connectionString,
-                            ServerVersion.AutoDetect(
-                                connectionString));
-                    });
-
-            /*
-             * REPOSITORIOS EXISTENTES
-             */
-
-            builder.Services.AddTransient<
-                IPostRepository,
-                PostRepository>();
-
-            builder.Services.AddTransient<
-                ICommentRepository,
-                CommentRepository>();
-
-            builder.Services.AddTransient<
-                IUsuarioRepository,
-                UsuarioRepository>();
-
-            builder.Services.AddTransient<
-                ICategoriaRepository,
-                CategoriaRepository>();
-
-            builder.Services.AddTransient<
-                IProductoRepository,
-                ProductoRepository>();
-
-            /*
-             * REPOSITORIO CU-03
-             */
-
-            builder.Services.AddScoped<
-                IMovimientoInventarioRepository,
-                MovimientoInventarioRepository>();
-
-            /*
-             * SERVICE CU-03
-             */
-
-            builder.Services.AddScoped<
-                IMovimientoInventarioService,
-                MovimientoInventarioService>();
-
+                        var authService = context.HttpContext.RequestServices.GetRequiredService<IAuthService>();
+                        var jti = context.Principal?.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
+                        if (!string.IsNullOrEmpty(jti) && authService.IsTokenRevoked(jti))
+                        {
+                            context.Fail("El token ha sido revocado (sesión cerrada).");
+                        }
+                        return Task.CompletedTask;
+                    }
+                };
+            });
 
             builder.Services.AddControllers();
-
             builder.Services.AddOpenApi();
+            builder.Services.AddAutoMapper(typeof(PostProfile).Assembly);
 
-            builder.Services.AddAutoMapper(
-                typeof(PostProfile).Assembly);
-
-            /*
-             * VALIDADORES EXISTENTES
-             */
-
-            builder.Services.AddScoped<
-                PostDtoValidator>();
-
-            builder.Services.AddScoped<
-                CrearPostDtoValidator>();
-
-            builder.Services.AddScoped<
-                ActualizarPostDtoValidator>();
-
-            builder.Services.AddScoped<
-                CrearProductoDtoValidator>();
-
-            builder.Services.AddScoped<
-                ActualizarProductoDtoValidator>();
-
-            builder.Services.AddScoped<
-                CategoriaDtoValidator>();
-
-            builder.Services.AddScoped<
-                ProductoDtoValidator>();
-
-            builder.Services.AddScoped<
-                CrearMovimientoDtoValidator>();
-
-            /*
-             * VALIDADOR CU-03
-             */
-
-            builder.Services.AddScoped<
-                RegistrarEntradaDtoValidator>();
-
-            //Registrar Validadores de FluentValidator
+           
+            // VALIDADORES FLUENTVALIDATION
+            
             builder.Services.AddScoped<PostDtoValidator>();
             builder.Services.AddScoped<CrearPostDtoValidator>();
             builder.Services.AddScoped<ActualizarPostDtoValidator>();
@@ -129,6 +107,7 @@ namespace ControlInventario.Api
             builder.Services.AddScoped<CategoriaDtoValidator>();
             builder.Services.AddScoped<ProductoDtoValidator>();
             builder.Services.AddScoped<CrearMovimientoDtoValidator>();
+            builder.Services.AddScoped<RegistrarEntradaDtoValidator>();
             builder.Services.AddScoped<LoginDtoValidator>();
             builder.Services.AddScoped<ConsultaStockQueryDtoValidator>();
 
@@ -139,16 +118,14 @@ namespace ControlInventario.Api
                 app.MapOpenApi();
             }
 
-            /*
-             * MIDDLEWARE GLOBAL
-             * DE EXCEPCIONES
-             */
-
-            app.UseMiddleware<
-                ExceptionMiddleware>();
+            
+             //* MIDDLEWARE GLOBAL DE EXCEPCIONES
+             
+            app.UseMiddleware<ExceptionMiddleware>();
 
             app.UseHttpsRedirection();
 
+            app.UseAuthentication(); 
             app.UseAuthorization();
 
             app.MapControllers();

@@ -1,5 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
-using ControlInventario.Core.Interfaces;
+using FluentValidation;
+using Microsoft.AspNetCore.Authorization;
+using ControlInventario.Api.Response;
+using ControlInventario.Core.DTOs;
+using ControlInventario.Services.Interfaces;
+using ControlInventario.Services.Validators;
 
 namespace ControlInventario.Api.Controllers
 {
@@ -7,13 +12,24 @@ namespace ControlInventario.Api.Controllers
     [ApiController]
     public class AuthController : ControllerBase
     {
-        private readonly IUsuarioRepository _usuarioRepository;
+        private readonly IAuthenticationService _authenticationService;
+        private readonly LoginDtoValidator _loginValidator;
 
-        public AuthController(IUsuarioRepository usuarioRepository)
+        public AuthController(
+            IAuthenticationService authenticationService,
+            LoginDtoValidator loginValidator)
         {
-            _usuarioRepository = usuarioRepository;
+            _authenticationService = authenticationService;
+            _loginValidator = loginValidator;
         }
 
-        // Endpoints pendientes de implementación.
+        [AllowAnonymous]
+        [HttpPost("login")]
+        public async Task<IActionResult> Login([FromBody] LoginDto login)
+        {
+            await _loginValidator.ValidateAndThrowAsync(login);
+            var response = await _authenticationService.AutenticarAsync(login);
+            return Ok(new ApiResponse<LoginResponseDto>(response));
+        }
     }
 }

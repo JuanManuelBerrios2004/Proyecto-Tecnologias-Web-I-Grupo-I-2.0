@@ -19,6 +19,7 @@ internal sealed class UnidadEnMemoria : IUnitOfWork
         _historial = new HistorialEnMemoria(this);
     }
 
+    public UsuariosEnMemoria Usuarios => _usuarios;
     public ProductosEnMemoria Productos { get; }
     public List<HistorialProducto> Historial { get; } = [];
     public int Guardados { get; private set; }
@@ -264,10 +265,27 @@ internal sealed class CategoriasEnMemoria(ProductosEnMemoria productos) : ICateg
 
 internal sealed class UsuariosEnMemoria : IUsuarioRepository
 {
+    public List<Usuario> Filas { get; } =
+    [
+        new Usuario
+        {
+            Id = 27,
+            RolId = 1,
+            NombreCompleto = "Administrador de prueba",
+            Email = "admin@prueba.local",
+            PasswordHash = "",
+            Activo = true,
+            Rol = new Rol { Id = 1, Nombre = "Administrador" }
+        }
+    ];
+
     public Task<bool> ExisteUsuarioAsync(int id) => Task.FromResult(id == 27);
     public Task<IEnumerable<Usuario>> GetAllUsuariosAsync() => throw new NotSupportedException();
-    public Task<Usuario?> GetUsuarioByIdAsync(int id) => throw new NotSupportedException();
-    public Task<Usuario?> GetUsuarioByEmailAsync(string email) => throw new NotSupportedException();
+    public Task<Usuario?> GetUsuarioByIdAsync(int id) =>
+        Task.FromResult(Filas.FirstOrDefault(usuario => usuario.Id == id));
+    public Task<Usuario?> GetUsuarioByEmailAsync(string email) =>
+        Task.FromResult(Filas.FirstOrDefault(usuario =>
+            string.Equals(usuario.Email, email.Trim(), StringComparison.OrdinalIgnoreCase)));
     public Task InsertUsuario(Usuario usuario) => throw new NotSupportedException();
     public Task UpdateUsuario(Usuario usuario) => throw new NotSupportedException();
     public Task DeleteUsuario(Usuario usuario) => throw new NotSupportedException();

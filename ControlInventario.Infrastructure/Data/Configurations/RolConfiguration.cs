@@ -19,7 +19,7 @@ namespace ControlInventario.Infrastructure.Data.Configurations
 
             entity.HasIndex(e => e.Nombre).IsUnique().HasDatabaseName("IX_roles_Nombre");
 
-            entity.Property(e => e.Nombre).HasColumnName("Nombre").HasMaxLength(50).IsRequired();
+            entity.Property(e => e.Nombre).HasColumnName("nombre").HasMaxLength(50).IsRequired();
         }
     }
 }

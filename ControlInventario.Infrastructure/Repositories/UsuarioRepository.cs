@@ -29,12 +29,19 @@ namespace ControlInventario.Infrastructure.Repositories
 
         public Task<Usuario?> GetUsuarioByIdAsync(int id)
         {
-            throw new NotImplementedException();
+            return _inventarioContext.Usuarios
+                .Include(usuario => usuario.Rol)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(usuario => usuario.Id == id);
         }
 
         public Task<Usuario?> GetUsuarioByEmailAsync(string email)
         {
-            throw new NotImplementedException();
+            var normalizado = email.Trim().ToLower();
+            return _inventarioContext.Usuarios
+                .Include(usuario => usuario.Rol)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(usuario => usuario.Email.ToLower() == normalizado);
         }
 
         public Task InsertUsuario(Usuario usuario)

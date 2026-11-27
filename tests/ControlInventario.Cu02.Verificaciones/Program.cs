@@ -2,6 +2,7 @@ using System.Data.Common;
 using System.Reflection;
 using System.Security.Claims;
 using System.Text.Json;
+using System.Text;
 using AutoMapper;
 using ControlInventario.Api.Controllers;
 using ControlInventario.Api.Filters;
@@ -25,6 +26,12 @@ using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
 using MySqlConnector;
+using Microsoft.AspNetCore.Authorization;
+using Microsoft.AspNetCore.Identity;
+using Microsoft.Extensions.Options;
+using Microsoft.IdentityModel.Tokens;
+using System.IdentityModel.Tokens.Jwt;
+using ControlInventario.Core.Security;
 
 const string Invalido = "Errores de validación en los datos enviados.";
 const string Precio = "El precio de venta debe ser superior al costo de compra";
@@ -43,6 +50,17 @@ registros.AddTransient<IProductoService, ProductoService>();
 registros.AddScoped<CrearProductoDtoValidator>();
 registros.AddScoped<ActualizarProductoDtoValidator>();
 registros.AddScoped<ConsultaStockQueryDtoValidator>();
+registros.AddScoped<LoginDtoValidator>();
+registros.AddScoped<PasswordHasher<Usuario>>();
+registros.AddSingleton<IOptions<JwtSettings>>(Options.Create(new JwtSettings
+{
+    Key = "clave-de-prueba-segura-32-bytes-minimo",
+    Issuer = "Pruebas.ControlInventario",
+    Audience = "Pruebas.ControlInventario.Cliente",
+    ExpirationMinutes = 30
+}));
+registros.AddScoped<ITokenService, TokenService>();
+registros.AddScoped<IAuthenticationService, AuthenticationService>();
 using var proveedor = registros.BuildServiceProvider(new ServiceProviderOptions { ValidateOnBuild = true, ValidateScopes = true });
 var total = 0;
 
@@ -337,6 +355,231 @@ await Probar("CU-05 rechaza categoría, nombre y parámetros incompatibles", asy
     Exigir(categoriaInvalida.StatusCode == 400);
 },0,0);
 
+await Probar("seguridad: login válido, usuario inactivo y credenciales inválidas", async (_,u,sp) =>
+{
+    var usuario = u.Usuarios.Filas.Single();
+    var hasher = sp.GetRequiredService<PasswordHasher<Usuario>>();
+    usuario.PasswordHash = hasher.HashPassword(usuario, "Clave.Prueba.123");
+    var auth = sp.GetRequiredService<IAuthenticationService>();
+
+    var respuesta = await auth.AutenticarAsync(new LoginDto
+    {
+        Email = "  ADMIN@PRUEBA.LOCAL ",
+        Password = "Clave.Prueba.123"
+    });
+    Exigir(respuesta.Token.Length > 20 &&
+        respuesta.UsuarioId == 27 &&
+        respuesta.Rol == RoleNames.Administrador &&
+        !respuesta.Token.Contains(usuario.PasswordHash));
+
+    await Error(
+        () => auth.AutenticarAsync(new LoginDto { Email = "nadie@prueba.local", Password = "Clave.Prueba.123" }),
+        401,
+        "Credenciales inválidas.");
+    await Error(
+        () => auth.AutenticarAsync(new LoginDto { Email = "admin@prueba.local", Password = "incorrecta" }),
+        401,
+        "Credenciales inválidas.");
+
+    usuario.Activo = false;
+    await Error(
+        () => auth.AutenticarAsync(new LoginDto { Email = "admin@prueba.local", Password = "Clave.Prueba.123" }),
+        401,
+        "Credenciales inválidas.");
+},0,0);
+
+await Probar("seguridad: validación y rol desconocido", async (_,u,sp) =>
+{
+    var validador = sp.GetRequiredService<LoginDtoValidator>();
+    Exigir(!(await validador.ValidateAsync(new LoginDto())).IsValid);
+    Exigir(!(await validador.ValidateAsync(new LoginDto { Email = "correo", Password = "x" })).IsValid);
+    Exigir((await validador.ValidateAsync(new LoginDto { Email = "empleado@prueba.local", Password = "x" })).IsValid);
+
+    u.Usuarios.Filas.Single().Rol!.Nombre = "RolDesconocido";
+    u.Usuarios.Filas.Single().PasswordHash =
+        sp.GetRequiredService<PasswordHasher<Usuario>>()
+            .HashPassword(u.Usuarios.Filas.Single(), "Clave.Prueba.123");
+
+    await Error(
+        () => sp.GetRequiredService<IAuthenticationService>().AutenticarAsync(
+            new LoginDto { Email = "admin@prueba.local", Password = "Clave.Prueba.123" }),
+        401,
+        "Credenciales inválidas.");
+},0,0);
+
+await Probar("seguridad: JWT válido contiene claims interpretables", (_,u,sp) =>
+{
+    var usuario = u.Usuarios.Filas.Single();
+    usuario.Rol = new Rol { Id = 1, Nombre = "Dueño" };
+    var tokenService = sp.GetRequiredService<ITokenService>();
+    var (token, expiraEn) = tokenService.Generar(usuario, RoleNames.Administrador);
+    Exigir(expiraEn > DateTime.UtcNow);
+
+    var handler = new JwtSecurityTokenHandler
+    {
+        MapInboundClaims = false
+    };
+    var settings = sp.GetRequiredService<IOptions<JwtSettings>>().Value;
+    var principal = handler.ValidateToken(token, new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(settings.Key!)),
+        ValidateIssuer = true,
+        ValidIssuer = settings.Issuer,
+        ValidateAudience = true,
+        ValidAudience = settings.Audience,
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.Zero,
+        NameClaimType = ClaimTypes.Name,
+        RoleClaimType = ClaimTypes.Role
+    }, out Microsoft.IdentityModel.Tokens.SecurityToken tokenValidado);
+
+    Exigir(principal.FindAll(ClaimTypes.NameIdentifier).Single().Value == "27");
+    Exigir(principal.FindAll(ClaimTypes.Role).Single().Value == RoleNames.Administrador);
+    return Task.CompletedTask;
+},0,0);
+
+await Probar("seguridad: JWT rechaza expiración, firma, issuer y audience", (_,u,sp) =>
+{
+    var usuario = u.Usuarios.Filas.Single();
+    var settings = sp.GetRequiredService<IOptions<JwtSettings>>().Value;
+    var clave = Encoding.UTF8.GetBytes(settings.Key!);
+    var credenciales = new SigningCredentials(
+        new SymmetricSecurityKey(clave),
+        SecurityAlgorithms.HmacSha256);
+
+    var expirado = new JwtSecurityToken(
+        issuer: settings.Issuer,
+        audience: settings.Audience,
+        claims:
+        [
+            new Claim(ClaimTypes.NameIdentifier, "27"),
+            new Claim(ClaimTypes.Role, RoleNames.Administrador)
+        ],
+        expires: DateTime.UtcNow.AddMinutes(-1),
+        signingCredentials: credenciales);
+
+    var parametros = new TokenValidationParameters
+    {
+        ValidateIssuerSigningKey = true,
+        IssuerSigningKey = new SymmetricSecurityKey(clave),
+        ValidateIssuer = true,
+        ValidIssuer = settings.Issuer,
+        ValidateAudience = true,
+        ValidAudience = settings.Audience,
+        ValidateLifetime = true,
+        ClockSkew = TimeSpan.Zero
+    };
+    var handler = new JwtSecurityTokenHandler { MapInboundClaims = false };
+
+    Exigir(!TokenValido(handler, parametros, handler.WriteToken(expirado)));
+
+    var issuerIncorrecto = JwtConClaims(settings, credenciales, usuario,
+        "Issuer.Incorrecto", settings.Audience!);
+    Exigir(!TokenValido(handler, parametros, issuerIncorrecto));
+
+    var audienceIncorrecta = JwtConClaims(settings, credenciales, usuario,
+        settings.Issuer!, "Audience.Incorrecta");
+    Exigir(!TokenValido(handler, parametros, audienceIncorrecta));
+
+    var firmaIncorrecta = JwtConClaims(settings,
+        new SigningCredentials(
+            new SymmetricSecurityKey(Encoding.UTF8.GetBytes("otra-clave-de-prueba-de-32-bytes!")),
+            SecurityAlgorithms.HmacSha256),
+        usuario,
+        settings.Issuer!,
+        settings.Audience!);
+    Exigir(!TokenValido(handler, parametros, firmaIncorrecta));
+    return Task.CompletedTask;
+},0,0);
+
+await Probar("seguridad: metadatos protegen CU-02, CU-05 y CU-06", (_,_,_) =>
+{
+    foreach (var nombre in new[]
+    {
+        nameof(ProductoController.GetProductos),
+        nameof(ProductoController.GetProductoById),
+        nameof(ProductoController.InsertProducto),
+        nameof(ProductoController.UpdateProducto),
+        nameof(ProductoController.DeleteProducto)
+    })
+    {
+        var atributo = typeof(ProductoController).GetMethod(nombre)!
+            .GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>()
+            .Single();
+        Exigir(atributo.Policy == RoleNames.AdministradorPolicy);
+    }
+
+    foreach (var nombre in new[]
+    {
+        nameof(ProductoController.GetStockProductos),
+        nameof(InventoryController.GetStock)
+    })
+    {
+        var metodo = nombre == nameof(ProductoController.GetStockProductos)
+            ? typeof(ProductoController).GetMethod(nombre)!
+            : typeof(InventoryController).GetMethod(nombre)!;
+        var atributo = metodo.GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>()
+            .Single();
+        Exigir(atributo.Policy == RoleNames.ConsultaStockPolicy);
+    }
+
+    foreach (var nombre in new[]
+    {
+        nameof(CategoriaController.GetCategorias),
+        nameof(CategoriaController.GetCategoriaById)
+    })
+    {
+        var atributo = typeof(CategoriaController).GetMethod(nombre)!
+            .GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>()
+            .Single();
+        Exigir(atributo.Policy == RoleNames.UsuarioAutenticadoPolicy);
+    }
+
+    foreach (var nombre in new[]
+    {
+        nameof(CategoriaController.InsertCategoria),
+        nameof(CategoriaController.UpdateCategoria),
+        nameof(CategoriaController.DeleteCategoria)
+    })
+    {
+        var atributo = typeof(CategoriaController).GetMethod(nombre)!
+            .GetCustomAttributes(typeof(AuthorizeAttribute), true)
+            .Cast<AuthorizeAttribute>()
+            .Single();
+        Exigir(atributo.Policy == RoleNames.AdministradorPolicy);
+    }
+    return Task.CompletedTask;
+},0,0);
+
+await Probar("seguridad: login no expone contraseña ni hash", (_,_,sp) =>
+{
+    var usuario = new Usuario
+    {
+        Id = 27,
+        NombreCompleto = "Usuario",
+        PasswordHash = "HASH-PRUEBA",
+        Rol = new Rol { Nombre = "Empleado" }
+    };
+    var hasher = sp.GetRequiredService<PasswordHasher<Usuario>>();
+    usuario.PasswordHash = hasher.HashPassword(usuario, "Clave.Prueba.123");
+    var json = JsonSerializer.Serialize(new LoginResponseDto
+    {
+        Token = "TOKEN-PRUEBA",
+        ExpiraEn = DateTime.UtcNow.AddMinutes(30),
+        UsuarioId = usuario.Id,
+        Nombre = usuario.NombreCompleto,
+        Rol = "Empleado"
+    });
+    Exigir(!json.Contains("Password", StringComparison.OrdinalIgnoreCase));
+    Exigir(!json.Contains("HASH-PRUEBA", StringComparison.Ordinal));
+    Exigir(!json.Contains("Clave.Prueba", StringComparison.Ordinal));
+    return Task.CompletedTask;
+},0,0);
+
 await Probar("AutoMapper protege stock, fecha, estado y relaciones", (_,_,sp) =>
 {
     new MapperConfiguration(cfg => cfg.AddProfile<ProductoProfile>()).AssertConfigurationIsValid();
@@ -455,6 +698,42 @@ static async Task Error(Func<Task> accion,int estado,string mensaje,string? camp
         Exigir(data.GetProperty("errors").EnumerateArray().Any(e => e.GetProperty("field").GetString() == campo &&
             (detalle == null || e.GetProperty("error").GetString() == detalle)));
     }
+}
+
+static bool TokenValido(
+    JwtSecurityTokenHandler handler,
+    TokenValidationParameters parametros,
+    string token)
+{
+    try
+    {
+        handler.ValidateToken(token, parametros, out _);
+        return true;
+    }
+    catch (SecurityTokenException)
+    {
+        return false;
+    }
+}
+
+static string JwtConClaims(
+    JwtSettings settings,
+    SigningCredentials credenciales,
+    Usuario usuario,
+    string issuer,
+    string audience)
+{
+    var token = new JwtSecurityToken(
+        issuer: issuer,
+        audience: audience,
+        claims:
+        [
+            new Claim(ClaimTypes.NameIdentifier, usuario.Id.ToString()),
+            new Claim(ClaimTypes.Role, RoleNames.Administrador)
+        ],
+        expires: DateTime.UtcNow.AddMinutes(30),
+        signingCredentials: credenciales);
+    return new JwtSecurityTokenHandler { MapInboundClaims = false }.WriteToken(token);
 }
 
 static MySqlException MySql(int numero,string mensaje)

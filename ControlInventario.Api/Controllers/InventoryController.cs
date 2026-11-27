@@ -1,8 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
 using ControlInventario.Api.Response;
 using ControlInventario.Core.DTOs;
 using ControlInventario.Services.Interfaces;
 using ControlInventario.Services.Validators;
+using ControlInventario.Core.Security;
 
 namespace ControlInventario.Api.Controllers
 {
@@ -29,6 +31,7 @@ namespace ControlInventario.Api.Controllers
         /// </summary>
         // TODO (CU-01): agregar [Authorize] cuando exista el login con JWT.
         [HttpGet("stock")]
+        [Authorize(Policy = RoleNames.ConsultaStockPolicy)]
         public async Task<IActionResult> GetStock([FromQuery] ConsultaStockQueryDto query)
         {
             var validationResult = await _validator.ValidateAsync(query);

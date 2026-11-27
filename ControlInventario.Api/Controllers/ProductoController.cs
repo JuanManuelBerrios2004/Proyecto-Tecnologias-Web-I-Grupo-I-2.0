@@ -3,6 +3,7 @@ using System.Net;
 using System.Security.Claims;
 using AutoMapper;
 using FluentValidation;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using ControlInventario.Api.Response;
 using ControlInventario.Core.DTOs;
@@ -10,6 +11,7 @@ using ControlInventario.Core.Entities;
 using ControlInventario.Core.Exceptions;
 using ControlInventario.Services.Interfaces;
 using ControlInventario.Services.Validators;
+using ControlInventario.Core.Security;
 
 namespace ControlInventario.Api.Controllers
 {
@@ -43,6 +45,7 @@ namespace ControlInventario.Api.Controllers
         /// Lista el catálogo de productos. Todos los filtros son opcionales (CU-02).
         /// </summary>
         [HttpGet]
+        [Authorize(Policy = RoleNames.AdministradorPolicy)]
         public async Task<IActionResult> GetProductos(
             [FromQuery] string? nombre,
             [FromQuery] int? categoriaId,
@@ -57,6 +60,7 @@ namespace ControlInventario.Api.Controllers
         /// Consulta un producto por su identificador (CU-02).
         /// </summary>
         [HttpGet("{id:int}")]
+        [Authorize(Policy = RoleNames.AdministradorPolicy)]
         public async Task<IActionResult> GetProductoById(int id)
         {
             ValidarId(id);
@@ -70,6 +74,7 @@ namespace ControlInventario.Api.Controllers
         /// Solo admite soloActivos=true. El parámetro stockMinimo no está soportado.
         /// </summary>
         [HttpGet("stock")]
+        [Authorize(Policy = RoleNames.ConsultaStockPolicy)]
         public async Task<IActionResult> GetStockProductos([FromQuery] ConsultaStockQueryDto query)
         {
             var validationResult = await _stockValidator.ValidateAsync(query);
@@ -98,6 +103,7 @@ namespace ControlInventario.Api.Controllers
         /// Crea un producto en el catálogo (CU-02).
         /// </summary>
         [HttpPost]
+        [Authorize(Policy = RoleNames.AdministradorPolicy)]
         public async Task<IActionResult> InsertProducto([FromBody] CrearProductoDto productoDto)
         {
             await _crearValidator.ValidateAndThrowAsync(productoDto);
@@ -110,6 +116,7 @@ namespace ControlInventario.Api.Controllers
         /// Actualiza un producto existente (CU-02).
         /// </summary>
         [HttpPut("{id:int}")]
+        [Authorize(Policy = RoleNames.AdministradorPolicy)]
         public async Task<IActionResult> UpdateProducto(int id, [FromBody] ActualizarProductoDto productoDto)
         {
             var usuarioId = ObtenerUsuarioIdAutenticado();
@@ -130,6 +137,7 @@ namespace ControlInventario.Api.Controllers
         /// Desactiva lógicamente un producto; la fila nunca se elimina físicamente (CU-02).
         /// </summary>
         [HttpDelete("{id:int}")]
+        [Authorize(Policy = RoleNames.AdministradorPolicy)]
         public async Task<IActionResult> DeleteProducto(int id)
         {
             var usuarioId = ObtenerUsuarioIdAutenticado();

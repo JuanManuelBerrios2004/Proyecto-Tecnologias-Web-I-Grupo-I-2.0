@@ -37,29 +37,19 @@ namespace ControlInventario.Api
                                 connectionString));
                     });
 
-            /*
-             * REPOSITORIOS EXISTENTES
-             */
+            builder.Services.AddScoped(typeof(IBaseRepository<>), typeof(BaseRepository<>));
+            builder.Services.AddScoped<IUnitOfWork, UnitOfWork>();
 
-            builder.Services.AddTransient<
-                IUsuarioRepository,
-                UsuarioRepository>();
+            builder.Services.AddScoped<IUsuarioRepository>(services =>
+                services.GetRequiredService<IUnitOfWork>().UsuarioRepository);
+            builder.Services.AddScoped<ICategoriaRepository>(services =>
+                services.GetRequiredService<IUnitOfWork>().CategoriaRepository);
+            builder.Services.AddScoped<IProductoRepository>(services =>
+                services.GetRequiredService<IUnitOfWork>().ProductoRepository);
+            builder.Services.AddScoped<IMovimientoInventarioRepository>(services =>
+                services.GetRequiredService<IUnitOfWork>().MovimientoInventarioRepository);
 
-            builder.Services.AddTransient<
-                ICategoriaRepository,
-                CategoriaRepository>();
-
-            builder.Services.AddTransient<
-                IProductoRepository,
-                ProductoRepository>();
-
-            /*
-             * REPOSITORIO CU-03
-             */
-
-            builder.Services.AddScoped<
-                IMovimientoInventarioRepository,
-                MovimientoInventarioRepository>();
+            builder.Services.AddTransient<IProductoService, ProductoService>();
 
             /*
              * SERVICE CU-03

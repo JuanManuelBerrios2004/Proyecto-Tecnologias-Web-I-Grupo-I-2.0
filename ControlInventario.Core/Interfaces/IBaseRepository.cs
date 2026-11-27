@@ -1,20 +1,13 @@
-using System.Collections.Generic;
-using System.Threading.Tasks;
+using ControlInventario.Core.Entities;
 
 namespace ControlInventario.Core.Interfaces
 {
-    public interface IBaseRepository<T> where T : class
+    public interface IBaseRepository<T> where T : BaseEntity
     {
-        Task<IEnumerable<T>> GetAllAsync();
-
-        Task<T?> GetByIdAsync(int id);
-
-        Task AddAsync(T entity);
-
+        Task<IEnumerable<T>> GetAll();
+        Task<T?> GetById(int id);
+        Task Add(T entity);
         void Update(T entity);
-
-        void Delete(T entity);
-
-        Task<int> SaveChangesAsync();
+        Task Delete(int id);
     }
 }

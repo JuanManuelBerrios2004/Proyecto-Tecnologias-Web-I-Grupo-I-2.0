@@ -2,10 +2,8 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ControlInventario.Core.Entities;
 
-public partial class Producto
+public partial class Producto : BaseEntity
 {
-    public int Id { get; set; }
-
     public int CategoriaId { get; set; }
 
     public string Nombre { get; set; } = null!;

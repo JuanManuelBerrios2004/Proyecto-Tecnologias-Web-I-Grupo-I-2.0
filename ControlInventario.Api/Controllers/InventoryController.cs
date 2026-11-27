@@ -1,6 +1,6 @@
 using Microsoft.AspNetCore.Mvc;
 using ControlInventario.Core.DTOs;
-using ControlInventario.Core.Interfaces;
+using ControlInventario.Services.Interfaces;
 using ControlInventario.Services.Validators;
 
 namespace ControlInventario.Api.Controllers
@@ -9,14 +9,14 @@ namespace ControlInventario.Api.Controllers
     [ApiController]
     public class InventoryController : ControllerBase
     {
-        private readonly IProductoRepository _productoRepository;
+        private readonly IProductoService _productoService;
         private readonly ConsultaStockQueryDtoValidator _validator;
 
         public InventoryController(
-            IProductoRepository productoRepository,
+            IProductoService productoService,
             ConsultaStockQueryDtoValidator validator)
         {
-            _productoRepository = productoRepository;
+            _productoService = productoService;
             _validator = validator;
         }
 
@@ -45,7 +45,7 @@ namespace ControlInventario.Api.Controllers
 
             try
             {
-                var productos = (await _productoRepository
+                var productos = (await _productoService
                     .GetStockProductosAsync(query.Nombre, query.CategoriaId)).ToList();
 
                 var hayFiltros = !string.IsNullOrWhiteSpace(query.Nombre) || query.CategoriaId.HasValue;

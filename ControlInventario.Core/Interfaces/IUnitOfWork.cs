@@ -1,0 +1,21 @@
+using System.Data;
+
+namespace ControlInventario.Core.Interfaces
+{
+    public interface IUnitOfWork : IDisposable
+    {
+        IProductoRepository ProductoRepository { get; }
+        ICategoriaRepository CategoriaRepository { get; }
+        IUsuarioRepository UsuarioRepository { get; }
+        IMovimientoInventarioRepository MovimientoInventarioRepository { get; }
+
+        void SaveChanges();
+        Task SaveChangesAsync();
+
+        Task BeginTransactionAsync();
+        Task CommitAsync();
+        Task RollbackAsync();
+        IDbConnection? GetDbConnection();
+        IDbTransaction? GetDbTransaction();
+    }
+}

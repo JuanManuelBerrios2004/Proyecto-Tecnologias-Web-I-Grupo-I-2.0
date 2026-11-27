@@ -7,6 +7,8 @@ namespace ControlInventario.Core.Interfaces
 {
     public interface ICategoriaRepository
     {
+        Task<bool> ExisteCategoriaAsync(int id);
+
         Task<IEnumerable<Categoria>> GetAllCategoriasAsync();
         Task<Categoria?> GetCategoriaByIdAsync(int id);
         Task InsertCategoria(Categoria categoria);

@@ -10,18 +10,15 @@ using System.Text;
 
 namespace ControlInventario.Infrastructure.Repositories
 {
-    public class ProductoRepository : IProductoRepository
+    public class ProductoRepository : BaseRepository<Producto>, IProductoRepository
     {
-        private readonly InventarioContext _inventarioContext;
-
-        public ProductoRepository(InventarioContext inventarioContext)
+        public ProductoRepository(InventarioContext inventarioContext) : base(inventarioContext)
         {
-            _inventarioContext = inventarioContext;
         }
 
         public async Task<IEnumerable<Producto>> GetAllProductosAsync()
         {
-            var productos = await _inventarioContext.Productos
+            var productos = await Entity
                 .Include(p => p.Categoria)
                 .ToListAsync();
             return productos;
@@ -29,7 +26,7 @@ namespace ControlInventario.Infrastructure.Repositories
 
         public async Task<Producto?> GetProductoByIdAsync(int id)
         {
-            var producto = await _inventarioContext.Productos
+            var producto = await Entity
                 .Include(p => p.Categoria)
                 .FirstOrDefaultAsync(x => x.Id == id);
             return producto;
@@ -37,7 +34,7 @@ namespace ControlInventario.Infrastructure.Repositories
 
         public async Task<IEnumerable<Producto>> GetProductosAsync(string? nombre = null, int? categoriaId = null, bool? soloActivos = null)
         {
-            var query = _inventarioContext.Productos.AsQueryable();
+            var query = Entity.AsQueryable();
 
             var texto = nombre?.Trim();
             if (!string.IsNullOrEmpty(texto))
@@ -62,37 +59,18 @@ namespace ControlInventario.Infrastructure.Repositories
             return productos;
         }
 
-        public async Task InsertProducto(Producto producto)
+        public void UpdateProducto(Producto existente, Producto cambios)
         {
-            _inventarioContext.Productos.Add(producto);
-            await _inventarioContext.SaveChangesAsync();
-        }
-
-        public async Task UpdateProducto(Producto producto)
-        {
-            var existente = await _inventarioContext.Productos
-                .FirstOrDefaultAsync(p => p.Id == producto.Id);
-
-            if (existente == null)
-            {
-                return;
-            }
-
-            existente.CategoriaId = producto.CategoriaId;
-            existente.Nombre = producto.Nombre;
-            existente.PrecioCompra = producto.PrecioCompra;
-            existente.PrecioVenta = producto.PrecioVenta;
-            // RN-02: el stock nunca se sobrescribe desde el catálogo; solo cambia con movimientos.
-            existente.Activo = producto.Activo;
-            // `CreadoEn` no se modifica: conserva la fecha de alta original.
-
-            await _inventarioContext.SaveChangesAsync();
+            existente.CategoriaId = cambios.CategoriaId;
+            existente.Nombre = cambios.Nombre;
+            existente.PrecioCompra = cambios.PrecioCompra;
+            existente.PrecioVenta = cambios.PrecioVenta;
+            // El catálogo conserva el stock, el estado y la fecha de alta.
         }
 
         public async Task<bool> DesactivarProductoAsync(int id)
         {
-            var producto = await _inventarioContext.Productos
-                .FirstOrDefaultAsync(p => p.Id == id);
+            var producto = await GetById(id);
 
             if (producto == null)
             {
@@ -100,15 +78,13 @@ namespace ControlInventario.Infrastructure.Repositories
             }
 
             producto.Activo = false;
-
-            await _inventarioContext.SaveChangesAsync();
             return true;
         }
 
         public async Task<IEnumerable<ProductoStockDto>> GetStockProductosAsync(string? nombre = null, int? categoriaId = null)
         {
             
-            var query = _inventarioContext.Productos
+            var query = Entity
                 .AsNoTracking()
                 .Where(p => p.Activo);
 

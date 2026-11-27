@@ -8,13 +8,15 @@ using System.Text;
 
 namespace ControlInventario.Infrastructure.Repositories
 {
-    public class CategoriaRepository : ICategoriaRepository
+    public class CategoriaRepository : BaseRepository<Categoria>, ICategoriaRepository
     {
-        private readonly InventarioContext _inventarioContext;
-
-        public CategoriaRepository(InventarioContext inventarioContext)
+        public CategoriaRepository(InventarioContext inventarioContext) : base(inventarioContext)
         {
-            _inventarioContext = inventarioContext;
+        }
+
+        public Task<bool> ExisteCategoriaAsync(int id)
+        {
+            return Entity.AnyAsync(categoria => categoria.Id == id);
         }
 
         public Task<IEnumerable<Categoria>> GetAllCategoriasAsync()

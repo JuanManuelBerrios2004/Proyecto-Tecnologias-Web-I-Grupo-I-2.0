@@ -1,12 +1,10 @@
 using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
-using Microsoft.EntityFrameworkCore;
-using MySqlConnector;
 using ControlInventario.Api.Response;
 using ControlInventario.Core.DTOs;
 using ControlInventario.Core.Entities;
-using ControlInventario.Core.Interfaces;
-using ControlInventario.Infrastructure.Data;
+using ControlInventario.Core.Exceptions;
+using ControlInventario.Services.Interfaces;
 using ControlInventario.Services.Validators;
 
 namespace ControlInventario.Api.Controllers
@@ -15,23 +13,20 @@ namespace ControlInventario.Api.Controllers
     [ApiController]
     public class ProductoController : ControllerBase
     {
-        private readonly IProductoRepository _productoRepository;
+        private readonly IProductoService _productoService;
         private readonly IMapper _mapper;
-        private readonly InventarioContext _inventarioContext;
         private readonly CrearProductoDtoValidator _crearValidator;
         private readonly ActualizarProductoDtoValidator _actualizarValidator;
         private readonly ConsultaStockQueryDtoValidator _stockValidator;
 
         public ProductoController(IMapper mapper,
-            IProductoRepository productoRepository,
-            InventarioContext inventarioContext,
+            IProductoService productoService,
             CrearProductoDtoValidator crearValidator,
             ActualizarProductoDtoValidator actualizarValidator,
             ConsultaStockQueryDtoValidator stockValidator)
         {
-            _productoRepository = productoRepository;
+            _productoService = productoService;
             _mapper = mapper;
-            _inventarioContext = inventarioContext;
             _crearValidator = crearValidator;
             _actualizarValidator = actualizarValidator;
             _stockValidator = stockValidator;
@@ -50,7 +45,7 @@ namespace ControlInventario.Api.Controllers
         {
             try
             {
-                var productos = await _productoRepository.GetProductosAsync(nombre, categoriaId, soloActivos);
+                var productos = await _productoService.GetProductosAsync(nombre, categoriaId, soloActivos);
                 var productosDto = _mapper.Map<IEnumerable<ProductoDto>>(productos);
 
                 var response = new ApiResponse<IEnumerable<ProductoDto>>(productosDto);
@@ -73,7 +68,7 @@ namespace ControlInventario.Api.Controllers
 
             try
             {
-                var producto = await _productoRepository.GetProductoByIdAsync(id);
+                var producto = await _productoService.GetProductoByIdAsync(id);
                 if (producto == null)
                     return NotFound(new { message = "Producto no encontrado." });
 
@@ -111,7 +106,7 @@ namespace ControlInventario.Api.Controllers
 
             try
             {
-                var stock = await _productoRepository.GetStockProductosAsync(query.Nombre, query.CategoriaId);
+                var stock = await _productoService.GetStockProductosAsync(query.Nombre, query.CategoriaId);
 
                 var response = new ApiResponse<IEnumerable<ProductoStockDto>>(stock);
                 return Ok(response);
@@ -147,35 +142,18 @@ namespace ControlInventario.Api.Controllers
                 });
             }
 
-            if (!await ExisteCategoriaAsync(productoDto.CategoriaId))
-            {
-                return BadRequest(new { message = "La categoría indicada no existe." });
-            }
-
             try
             {
-                // RN-01: ProductoProfile fija stock 0, Activo = true y las fechas de auditoría.
-                // La mercadería inicial se registra después mediante un movimiento de tipo ENTRADA.
                 var producto = _mapper.Map<Producto>(productoDto);
-
-                await _productoRepository.InsertProducto(producto);
-
-                // Se vuelve a consultar para que la navegación `Categoria` esté cargada.
-                var creado = await _productoRepository.GetProductoByIdAsync(producto.Id);
-                var resultDto = _mapper.Map<ProductoDto>(creado ?? producto);
+                var creado = await _productoService.InsertProducto(producto);
+                var resultDto = _mapper.Map<ProductoDto>(creado);
 
                 var response = new ApiResponse<ProductoDto>(resultDto);
-                return Created($"api/producto/{producto.Id}", response);
+                return Created($"api/producto/{creado.Id}", response);
             }
-            catch (DbUpdateException ex) when (EsErrorMySql(ex, 1062))
+            catch (BusinessException ex)
             {
-                // Índice único `IX_productos_Nombre` violado.
-                return Conflict(new { message = "Ya existe un producto registrado con ese nombre." });
-            }
-            catch (DbUpdateException ex) when (EsErrorMySql(ex, 1452))
-            {
-                // Llave foránea `FK_productos_categorias` inexistente.
-                return BadRequest(new { message = "La categoría indicada no existe." });
+                return StatusCode((int)ex.StatusCode, new { message = ex.Message });
             }
             catch (Exception)
             {
@@ -207,39 +185,20 @@ namespace ControlInventario.Api.Controllers
                 });
             }
 
-            var productoExistente = await _productoRepository.GetProductoByIdAsync(id);
-            if (productoExistente == null)
-                return NotFound(new { message = "Producto no encontrado." });
-
-            if (!await ExisteCategoriaAsync(productoDto.CategoriaId))
-            {
-                return BadRequest(new { message = "La categoría indicada no existe." });
-            }
-
             try
             {
-                // Se mapea sobre la entidad existente: ProductoProfile ignora StockActual (RN-02),
-                // Activo y CreadoEn, por lo que conservan su valor actual.
-                _mapper.Map(productoDto, productoExistente);
+                var cambios = _mapper.Map<Producto>(productoDto);
+                cambios.Id = id;
 
-                await _productoRepository.UpdateProducto(productoExistente);
-
-                // Se vuelve a consultar para que `Categoria` refleje un posible cambio de categoría.
-                var actualizado = await _productoRepository.GetProductoByIdAsync(id);
-                var resultDto = _mapper.Map<ProductoDto>(actualizado ?? productoExistente);
+                var actualizado = await _productoService.UpdateProducto(cambios);
+                var resultDto = _mapper.Map<ProductoDto>(actualizado);
 
                 var response = new ApiResponse<ProductoDto>(resultDto);
                 return Ok(response);
             }
-            catch (DbUpdateException ex) when (EsErrorMySql(ex, 1062))
+            catch (BusinessException ex)
             {
-                // Índice único `IX_productos_Nombre` violado.
-                return Conflict(new { message = "Ya existe un producto registrado con ese nombre." });
-            }
-            catch (DbUpdateException ex) when (EsErrorMySql(ex, 1452))
-            {
-                // Llave foránea `FK_productos_categorias` inexistente.
-                return BadRequest(new { message = "La categoría indicada no existe." });
+                return StatusCode((int)ex.StatusCode, new { message = ex.Message });
             }
             catch (Exception)
             {
@@ -262,7 +221,7 @@ namespace ControlInventario.Api.Controllers
 
             try
             {
-                var desactivado = await _productoRepository.DesactivarProductoAsync(id);
+                var desactivado = await _productoService.DesactivarProductoAsync(id);
                 if (!desactivado)
                     return NotFound(new { message = "Producto no encontrado." });
 
@@ -272,38 +231,6 @@ namespace ControlInventario.Api.Controllers
             {
                 return StatusCode(500, new { message = "Error al desactivar el producto" });
             }
-        }
-
-        #endregion
-
-        #region Utilidades
-
-        /// <summary>
-        /// Comprueba que la categoría exista. `ICategoriaRepository` no se usa porque sus
-        /// métodos no están implementados; se consulta el contexto directamente.
-        /// </summary>
-        private async Task<bool> ExisteCategoriaAsync(int categoriaId)
-        {
-            return await _inventarioContext.Categorias.AnyAsync(c => c.Id == categoriaId);
-        }
-
-        /// <summary>
-        /// Detecta un código de error de MySQL concreto dentro de la cadena de excepciones.
-        /// 1062 = índice único duplicado, 1452 = llave foránea inexistente.
-        /// </summary>
-        private static bool EsErrorMySql(DbUpdateException ex, int numeroError)
-        {
-            Exception? actual = ex;
-
-            while (actual != null)
-            {
-                if (actual is MySqlException mySqlException && mySqlException.Number == numeroError)
-                    return true;
-
-                actual = actual.InnerException;
-            }
-
-            return false;
         }
 
         #endregion

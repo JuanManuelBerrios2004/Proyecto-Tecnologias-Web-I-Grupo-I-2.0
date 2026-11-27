@@ -4,7 +4,7 @@ using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ControlInventario.Core.Entities;
 
-public partial class MovimientoInventario
+public partial class MovimientoInventario : BaseEntity
 {
     // Valores admitidos por el ENUM `TipoMovimiento` de MySQL.
     public static readonly string[] TiposMovimientoPermitidos = { "ENTRADA", "SALIDA" };
@@ -14,8 +14,6 @@ public partial class MovimientoInventario
     {
         "COMPRA_PROVEEDOR", "VENTA", "MERMA_DETERIORO", "AJUSTE"
     };
-
-    public int Id { get; set; }
 
     public int ProductoId { get; set; }
 

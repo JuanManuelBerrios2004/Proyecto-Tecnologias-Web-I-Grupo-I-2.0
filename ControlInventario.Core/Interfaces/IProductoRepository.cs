@@ -30,12 +30,12 @@ namespace ControlInventario.Core.Interfaces
         /// <summary>
         /// Crea un producto en el catálogo (CU-02).
         /// </summary>
-        Task InsertProducto(Producto producto);
+        Task Add(Producto producto);
 
         /// <summary>
-        /// Actualiza un producto existente (CU-02).
+        /// Aplica cambios del catálogo a un producto obtenido de este repositorio (CU-02).
         /// </summary>
-        Task UpdateProducto(Producto producto);
+        void UpdateProducto(Producto existente, Producto cambios);
 
         /// <summary>
         /// Desactiva lógicamente un producto existente, sin eliminar la fila (CU-02).

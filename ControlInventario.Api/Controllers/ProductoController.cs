@@ -1,7 +1,13 @@
+
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading.Tasks;
 using AutoMapper;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using MySqlConnector;
+
 using ControlInventario.Api.Response;
 using ControlInventario.Core.DTOs;
 using ControlInventario.Core.Entities;
@@ -21,7 +27,8 @@ namespace ControlInventario.Api.Controllers
         private readonly CrearProductoDtoValidator _crearValidator;
         private readonly ActualizarProductoDtoValidator _actualizarValidator;
 
-        public ProductoController(IMapper mapper,
+        public ProductoController(
+            IMapper mapper,
             IProductoRepository productoRepository,
             InventarioContext inventarioContext,
             CrearProductoDtoValidator crearValidator,
@@ -34,11 +41,7 @@ namespace ControlInventario.Api.Controllers
             _actualizarValidator = actualizarValidator;
         }
 
-        #region Consultas (GET)
-
-        /// <summary>
-        /// Lista el catálogo de productos. Todos los filtros son opcionales (CU-02).
-        /// </summary>
+        // CU-02: CONSULTAR CATALOGO DE PRODUCTOS
         [HttpGet]
         public async Task<IActionResult> GetProductos(
             [FromQuery] string? nombre,
@@ -47,48 +50,81 @@ namespace ControlInventario.Api.Controllers
         {
             try
             {
-                var productos = await _productoRepository.GetProductosAsync(nombre, categoriaId, soloActivos);
-                var productosDto = _mapper.Map<IEnumerable<ProductoDto>>(productos);
+                var productos = await _productoRepository
+                    .GetProductosAsync(
+                        nombre,
+                        categoriaId,
+                        soloActivos);
 
-                var response = new ApiResponse<IEnumerable<ProductoDto>>(productosDto);
-                return Ok(response);
+                var productosDto = _mapper.Map<
+                    IEnumerable<ProductoDto>>(productos);
+
+                return Ok(
+                    new ApiResponse<IEnumerable<ProductoDto>>(
+                        productosDto));
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error al obtener los productos", error = ex.Message });
+                // Muestra el error completo en la terminal
+                Console.WriteLine(
+                    "========== ERROR MYSQL / PRODUCTOS ==========");
+
+                Console.WriteLine(ex.ToString());
+
+                Console.WriteLine(
+                    "=============================================");
+
+                // No exponer detalles internos al cliente
+                return StatusCode(500, new
+                {
+                    message = "Error al consultar los productos"
+                });
             }
         }
 
-        /// <summary>
-        /// Consulta un producto por su identificador (CU-02).
-        /// </summary>
+        // CU-02: CONSULTAR PRODUCTO POR ID
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetProductoById(int id)
         {
             if (id <= 0)
-                return BadRequest(new { message = "El ID debe ser mayor que cero." });
+            {
+                return BadRequest(new
+                {
+                    message = "El ID debe ser mayor que cero."
+                });
+            }
 
             try
             {
-                var producto = await _productoRepository.GetProductoByIdAsync(id);
+                var producto = await _productoRepository
+                    .GetProductoByIdAsync(id);
+
                 if (producto == null)
-                    return NotFound(new { message = "Producto no encontrado." });
+                {
+                    return NotFound(new
+                    {
+                        message = "Producto no encontrado."
+                    });
+                }
 
-                var productoDto = _mapper.Map<ProductoDto>(producto);
+                var productoDto = _mapper.Map<ProductoDto>(
+                    producto);
 
-                var response = new ApiResponse<ProductoDto>(productoDto);
-                return Ok(response);
+                return Ok(
+                    new ApiResponse<ProductoDto>(
+                        productoDto));
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error al obtener el producto", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al obtener el producto",
+                    error = ex.Message
+                });
             }
         }
 
-        /// <summary>
-        /// Consulta el stock disponible de los productos (CU-05).
-        /// Si no se indica `soloActivos`, se muestran únicamente los productos activos.
-        /// </summary>
+        // CU-05: CONSULTAR STOCK DISPONIBLE
         [HttpGet("stock")]
         public async Task<IActionResult> GetStockProductos(
             [FromQuery] string? nombre,
@@ -98,40 +134,75 @@ namespace ControlInventario.Api.Controllers
         {
             try
             {
-                // RN-08: por defecto solo se listan productos activos; `soloActivos=false` debe enviarse
-                // explícitamente para consultar también los inactivos.
-                var filtrarSoloActivos = soloActivos ?? true;
+                if (stockMinimo.HasValue &&
+                    stockMinimo.Value < 0)
+                {
+                    return BadRequest(new
+                    {
+                        message = "El stock minimo no puede ser negativo."
+                    });
+                }
 
-                // El repositorio ya proyecta a ProductoStockDto: no hace falta mapear de nuevo.
-                var stock = await _productoRepository.GetStockProductosAsync(nombre, categoriaId, filtrarSoloActivos, stockMinimo);
+                IEnumerable<ProductoStockDto> stock;
 
-                var response = new ApiResponse<IEnumerable<ProductoStockDto>>(stock);
-                return Ok(response);
+                if (soloActivos != false)
+                {
+                    stock = await _productoRepository
+                        .GetStockProductosAsync(
+                            nombre,
+                            categoriaId);
+                }
+                else
+                {
+                    var productos = await _productoRepository
+                        .GetProductosAsync(
+                            nombre,
+                            categoriaId,
+                            false);
+
+                    stock = _mapper.Map<
+                        IEnumerable<ProductoStockDto>>(
+                            productos);
+                }
+
+                if (stockMinimo.HasValue)
+                {
+                    stock = stock.Where(
+                        p => p.StockActual >= stockMinimo.Value);
+                }
+
+                stock = stock
+                    .OrderBy(p => p.Nombre)
+                    .ToList();
+
+                return Ok(
+                    new ApiResponse<IEnumerable<ProductoStockDto>>(
+                        stock));
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error al obtener el stock de productos", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al obtener el stock",
+                    error = ex.Message
+                });
             }
         }
 
-        #endregion
-
-        #region Escritura (POST / PUT)
-
-        /// <summary>
-        /// Crea un producto en el catálogo (CU-02).
-        /// </summary>
+        // CU-02: REGISTRAR NUEVO PRODUCTO
         [HttpPost]
-        public async Task<IActionResult> InsertProducto([FromBody] CrearProductoDto productoDto)
+        public async Task<IActionResult> InsertProducto(
+            [FromBody] CrearProductoDto productoDto)
         {
-            // Validar el DTO
-            var validationResult = await _crearValidator.ValidateAsync(productoDto);
-            if (!validationResult.IsValid)
+            var validacion = await _crearValidator
+                .ValidateAsync(productoDto);
+
+            if (!validacion.IsValid)
             {
                 return BadRequest(new
                 {
-                    message = "Error de validación",
-                    errors = validationResult.Errors.Select(e => new
+                    message = "Error de validacion",
+                    errors = validacion.Errors.Select(e => new
                     {
                         field = e.PropertyName,
                         error = e.ErrorMessage
@@ -139,59 +210,82 @@ namespace ControlInventario.Api.Controllers
                 });
             }
 
-            if (!await ExisteCategoriaAsync(productoDto.CategoriaId))
+            if (!await ExisteCategoriaAsync(
+                productoDto.CategoriaId))
             {
-                return BadRequest(new { message = "La categoría indicada no existe." });
+                return BadRequest(new
+                {
+                    message = "La categoria indicada no existe."
+                });
             }
 
             try
             {
-                // RN-01: ProductoProfile fija stock 0, Activo = true y las fechas de auditoría.
-                // La mercadería inicial se registra después mediante un movimiento de tipo ENTRADA.
-                var producto = _mapper.Map<Producto>(productoDto);
+                var producto = _mapper.Map<Producto>(
+                    productoDto);
 
-                await _productoRepository.InsertProducto(producto);
+                await _productoRepository.InsertProducto(
+                    producto);
 
-                // Se vuelve a consultar para que la navegación `Categoria` esté cargada.
-                var creado = await _productoRepository.GetProductoByIdAsync(producto.Id);
-                var resultDto = _mapper.Map<ProductoDto>(creado ?? producto);
+                var creado = await _productoRepository
+                    .GetProductoByIdAsync(producto.Id);
 
-                var response = new ApiResponse<ProductoDto>(resultDto);
-                return Created($"api/producto/{producto.Id}", response);
+                var resultado = _mapper.Map<ProductoDto>(
+                    creado ?? producto);
+
+                return Created(
+                    $"api/producto/{producto.Id}",
+                    new ApiResponse<ProductoDto>(resultado));
             }
-            catch (DbUpdateException ex) when (EsErrorMySql(ex, 1062))
+            catch (DbUpdateException ex)
+                when (EsErrorMySql(ex, 1062))
             {
-                // Índice único `IX_productos_Nombre` violado.
-                return Conflict(new { message = "Ya existe un producto registrado con ese nombre." });
+                return Conflict(new
+                {
+                    message = "Ya existe un producto con ese nombre."
+                });
             }
-            catch (DbUpdateException ex) when (EsErrorMySql(ex, 1452))
+            catch (DbUpdateException ex)
+                when (EsErrorMySql(ex, 1452))
             {
-                // Llave foránea `FK_productos_categorias` inexistente.
-                return BadRequest(new { message = "La categoría indicada no existe." });
+                return BadRequest(new
+                {
+                    message = "La categoria indicada no existe."
+                });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error al crear el producto", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al crear el producto",
+                    error = ex.Message
+                });
             }
         }
 
-        /// <summary>
-        /// Actualiza un producto existente (CU-02).
-        /// </summary>
+        // CU-02: ACTUALIZAR PRODUCTO
         [HttpPut("{id:int}")]
-        public async Task<IActionResult> UpdateProducto(int id, [FromBody] ActualizarProductoDto productoDto)
+        public async Task<IActionResult> UpdateProducto(
+            int id,
+            [FromBody] ActualizarProductoDto productoDto)
         {
             if (id <= 0)
-                return BadRequest(new { message = "El ID debe ser mayor que cero." });
-
-            // Validar el DTO
-            var validationResult = await _actualizarValidator.ValidateAsync(productoDto);
-            if (!validationResult.IsValid)
             {
                 return BadRequest(new
                 {
-                    message = "Error de validación",
-                    errors = validationResult.Errors.Select(e => new
+                    message = "El ID debe ser mayor que cero."
+                });
+            }
+
+            var validacion = await _actualizarValidator
+                .ValidateAsync(productoDto);
+
+            if (!validacion.IsValid)
+            {
+                return BadRequest(new
+                {
+                    message = "Error de validacion",
+                    errors = validacion.Errors.Select(e => new
                     {
                         field = e.PropertyName,
                         error = e.ErrorMessage
@@ -199,106 +293,133 @@ namespace ControlInventario.Api.Controllers
                 });
             }
 
-            var productoExistente = await _productoRepository.GetProductoByIdAsync(id);
-            if (productoExistente == null)
-                return NotFound(new { message = "Producto no encontrado." });
-
-            if (!await ExisteCategoriaAsync(productoDto.CategoriaId))
-            {
-                return BadRequest(new { message = "La categoría indicada no existe." });
-            }
-
             try
             {
-                // Se mapea sobre la entidad existente: ProductoProfile ignora StockActual (RN-02),
-                // Activo, CreadoEn y ActualizadoEn, por lo que conservan su valor actual.
-                _mapper.Map(productoDto, productoExistente);
+                var producto = await _productoRepository
+                    .GetProductoByIdAsync(id);
 
-                // El repositorio actualiza `ActualizadoEn`.
-                await _productoRepository.UpdateProducto(productoExistente);
+                if (producto == null)
+                {
+                    return NotFound(new
+                    {
+                        message = "Producto no encontrado."
+                    });
+                }
 
-                // Se vuelve a consultar para que `Categoria` refleje un posible cambio de categoría.
-                var actualizado = await _productoRepository.GetProductoByIdAsync(id);
-                var resultDto = _mapper.Map<ProductoDto>(actualizado ?? productoExistente);
+                if (!await ExisteCategoriaAsync(
+                    productoDto.CategoriaId))
+                {
+                    return BadRequest(new
+                    {
+                        message = "La categoria indicada no existe."
+                    });
+                }
 
-                var response = new ApiResponse<ProductoDto>(resultDto);
-                return Ok(response);
+                _mapper.Map(productoDto, producto);
+
+                await _productoRepository.UpdateProducto(
+                    producto);
+
+                var actualizado = await _productoRepository
+                    .GetProductoByIdAsync(id);
+
+                var resultado = _mapper.Map<ProductoDto>(
+                    actualizado ?? producto);
+
+                return Ok(
+                    new ApiResponse<ProductoDto>(resultado));
             }
-            catch (DbUpdateException ex) when (EsErrorMySql(ex, 1062))
+            catch (DbUpdateException ex)
+                when (EsErrorMySql(ex, 1062))
             {
-                // Índice único `IX_productos_Nombre` violado.
-                return Conflict(new { message = "Ya existe un producto registrado con ese nombre." });
+                return Conflict(new
+                {
+                    message = "Ya existe un producto con ese nombre."
+                });
             }
-            catch (DbUpdateException ex) when (EsErrorMySql(ex, 1452))
+            catch (DbUpdateException ex)
+                when (EsErrorMySql(ex, 1452))
             {
-                // Llave foránea `FK_productos_categorias` inexistente.
-                return BadRequest(new { message = "La categoría indicada no existe." });
+                return BadRequest(new
+                {
+                    message = "La categoria indicada no existe."
+                });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error al actualizar el producto", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al actualizar el producto",
+                    error = ex.Message
+                });
             }
         }
 
-        #endregion
-
-        #region Desactivación (DELETE)
-
-        /// <summary>
-        /// Desactiva lógicamente un producto; la fila nunca se elimina físicamente (CU-02).
-        /// </summary>
+        // CU-02: DESACTIVAR PRODUCTO
         [HttpDelete("{id:int}")]
-        public async Task<IActionResult> DeleteProducto(int id)
+        public async Task<IActionResult> DeleteProducto(
+            int id)
         {
             if (id <= 0)
-                return BadRequest(new { message = "El ID debe ser mayor que cero." });
+            {
+                return BadRequest(new
+                {
+                    message = "El ID debe ser mayor que cero."
+                });
+            }
 
             try
             {
-                var desactivado = await _productoRepository.DesactivarProductoAsync(id);
-                if (!desactivado)
-                    return NotFound(new { message = "Producto no encontrado." });
+                var desactivado = await _productoRepository
+                    .DesactivarProductoAsync(id);
 
-                return NoContent(); // 204 sin contenido
+                if (!desactivado)
+                {
+                    return NotFound(new
+                    {
+                        message = "Producto no encontrado."
+                    });
+                }
+
+                return NoContent();
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { message = "Error al desactivar el producto", error = ex.Message });
+                return StatusCode(500, new
+                {
+                    message = "Error al desactivar el producto",
+                    error = ex.Message
+                });
             }
         }
 
-        #endregion
-
-        #region Utilidades
-
-        /// <summary>
-        /// Comprueba que la categoría exista. `ICategoriaRepository` no se usa porque sus
-        /// métodos no están implementados; se consulta el contexto directamente.
-        /// </summary>
-        private async Task<bool> ExisteCategoriaAsync(int categoriaId)
+        // VALIDAR EXISTENCIA DE CATEGORIA
+        private async Task<bool> ExisteCategoriaAsync(
+            int categoriaId)
         {
-            return await _inventarioContext.Categorias.AnyAsync(c => c.Id == categoriaId);
+            return await _inventarioContext.Categorias
+                .AnyAsync(c => c.Id == categoriaId);
         }
 
-        /// <summary>
-        /// Detecta un código de error de MySQL concreto dentro de la cadena de excepciones.
-        /// 1062 = índice único duplicado, 1452 = llave foránea inexistente.
-        /// </summary>
-        private static bool EsErrorMySql(DbUpdateException ex, int numeroError)
+        // IDENTIFICAR ERRORES DE MYSQL
+        private static bool EsErrorMySql(
+            DbUpdateException ex,
+            int numeroError)
         {
             Exception? actual = ex;
 
             while (actual != null)
             {
-                if (actual is MySqlException mySqlException && mySqlException.Number == numeroError)
+                if (actual is MySqlException mysql &&
+                    mysql.Number == numeroError)
+                {
                     return true;
+                }
 
                 actual = actual.InnerException;
             }
 
             return false;
         }
-
-        #endregion
     }
 }

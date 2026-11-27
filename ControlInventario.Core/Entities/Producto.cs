@@ -1,3 +1,6 @@
+
+using System;
+using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations.Schema;
 
 namespace ControlInventario.Core.Entities;
@@ -23,7 +26,10 @@ public partial class Producto
 
     public DateTime CreadoEn { get; set; }
 
-    public virtual Categoria? Categoria { get; set; } = null!;
+    // NUEVA PROPIEDAD: fecha de ultima actualizacion
+    public DateTime ActualizadoEn { get; set; }
+
+    public virtual Categoria? Categoria { get; set; }
 
     public virtual ICollection<MovimientoInventario> Movimientos
     {

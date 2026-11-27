@@ -1,20 +1,28 @@
-using FluentValidation;
-using ControlInventario.Core.CustomEntities;
-using ControlInventario.Core.Exceptions;
+
+using System;
+using System.Linq;
 using System.Net;
 using System.Text.Json;
+using System.Threading.Tasks;
+
+using FluentValidation;
+using Microsoft.AspNetCore.Http;
+using Microsoft.Extensions.Logging;
+
+using ControlInventario.Core.CustomEntities;
+using ControlInventario.Core.Exceptions;
 
 namespace ControlInventario.Api.Filters
 {
-    /// <summary>
-    /// Captura las excepciones no controladas y las convierte en una respuesta JSON uniforme.
-    /// </summary>
     public class ExceptionHandlingMiddleware
     {
         private readonly RequestDelegate _next;
+
         private readonly ILogger<ExceptionHandlingMiddleware> _logger;
 
-        public ExceptionHandlingMiddleware(RequestDelegate next, ILogger<ExceptionHandlingMiddleware> logger)
+        public ExceptionHandlingMiddleware(
+            RequestDelegate next,
+            ILogger<ExceptionHandlingMiddleware> logger)
         {
             _next = next;
             _logger = logger;
@@ -28,30 +36,43 @@ namespace ControlInventario.Api.Filters
             }
             catch (Exception ex)
             {
-                // El log guarda el error completo para el desarrollador.
-                _logger.LogError(ex, "Excepción capturada por el Middleware Global.");
+                _logger.LogError(
+                    ex,
+                    "Excepcion capturada por el Middleware Global.");
+
                 await HandleExceptionAsync(context, ex);
             }
         }
 
-        private static Task HandleExceptionAsync(HttpContext context, Exception exception)
+        private static Task HandleExceptionAsync(
+            HttpContext context,
+            Exception exception)
         {
             var code = HttpStatusCode.InternalServerError;
+
             string message = "Error interno no controlado.";
+
             object? errors = null;
 
             switch (exception)
             {
                 case BusinessException bizEx:
-                    code = bizEx.StatusCode;
+                    // Convertir el codigo entero a HttpStatusCode.
+                    code = (HttpStatusCode)bizEx.StatusCode;
                     message = bizEx.Message;
                     errors = bizEx.Details;
                     break;
 
                 case ValidationException valEx:
                     code = HttpStatusCode.BadRequest;
-                    message = "Errores de validación en los datos enviados.";
-                    errors = valEx.Errors.Select(e => new { Field = e.PropertyName, Error = e.ErrorMessage });
+                    message = "Errores de validacion en los datos enviados.";
+
+                    errors = valEx.Errors.Select(e => new
+                    {
+                        Field = e.PropertyName,
+                        Error = e.ErrorMessage
+                    });
+
                     break;
             }
 
@@ -67,10 +88,13 @@ namespace ControlInventario.Api.Filters
             context.Response.ContentType = "application/json";
             context.Response.StatusCode = (int)code;
 
-            return context.Response.WriteAsync(JsonSerializer.Serialize(response, new JsonSerializerOptions
+            var opciones = new JsonSerializerOptions
             {
                 PropertyNamingPolicy = JsonNamingPolicy.CamelCase
-            }));
+            };
+
+            return context.Response.WriteAsync(
+                JsonSerializer.Serialize(response, opciones));
         }
     }
 }

@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk.Web">
+﻿<Project Sdk="Microsoft.NET.Sdk.Web">
 
   <PropertyGroup>
     <TargetFramework>net10.0</TargetFramework>
@@ -6,6 +6,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <AssemblyName>ControlInventario.Api</AssemblyName>
     <RootNamespace>ControlInventario.Api</RootNamespace>
+    <UserSecretsId>e3db12b8-ac41-4bb1-812f-930c052c7ae0</UserSecretsId>
   </PropertyGroup>
 
   <ItemGroup>

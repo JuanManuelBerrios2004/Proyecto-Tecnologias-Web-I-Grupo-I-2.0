@@ -1,15 +1,14 @@
+
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Metadata.Builders;
 using ControlInventario.Core.Entities;
 
-namespace ControlInventario.Infrastructure
-    .Data.Configurations
+namespace ControlInventario.Infrastructure.Data.Configurations
 {
     public class ProductoConfiguration
         : IEntityTypeConfiguration<Producto>
     {
-        public void Configure(
-            EntityTypeBuilder<Producto> entity)
+        public void Configure(EntityTypeBuilder<Producto> entity)
         {
             entity.ToTable("productos");
 
@@ -51,14 +50,18 @@ namespace ControlInventario.Infrastructure
             entity.Property(x => x.CreadoEn)
                 .HasColumnName("creado_en")
                 .HasColumnType("timestamp")
-                .HasDefaultValueSql(
-                    "CURRENT_TIMESTAMP");
+                .HasDefaultValueSql("CURRENT_TIMESTAMP");
+
+            // Fecha de ultima actualizacion
+            entity.Property(x => x.ActualizadoEn)
+                .HasColumnName("actualizado_en")
+                .HasColumnType("datetime(6)")
+                .IsRequired();
 
             entity.HasOne(x => x.Categoria)
                 .WithMany(x => x.Productos)
                 .HasForeignKey(x => x.CategoriaId)
-                .OnDelete(
-                    DeleteBehavior.Restrict);
+                .OnDelete(DeleteBehavior.Restrict);
         }
     }
 }

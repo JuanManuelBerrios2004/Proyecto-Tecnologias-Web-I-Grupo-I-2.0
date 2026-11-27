@@ -10,6 +10,6 @@ namespace ControlInventario.Core.DTOs
 
         public string? Descripcion { get; set; }
 
-        public bool Activo { get; set; }
+        public DateTime CreadoEn { get; set; }
     }
 }

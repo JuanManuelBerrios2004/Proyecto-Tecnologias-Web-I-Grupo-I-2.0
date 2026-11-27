@@ -1,3 +1,4 @@
+using System.Net;
 using ControlInventario.Core.DTOs;
 using ControlInventario.Core.Entities;
 using ControlInventario.Core.Exceptions;
@@ -89,7 +90,7 @@ namespace ControlInventario.Services.Services
             {
                 throw new BusinessException(
                     "El ID debe ser mayor que cero.",
-                    400);
+                    HttpStatusCode.BadRequest);
             }
 
             var movimiento =
@@ -100,7 +101,7 @@ namespace ControlInventario.Services.Services
             {
                 throw new BusinessException(
                     "Movimiento no encontrado.",
-                    404);
+                    HttpStatusCode.NotFound);
             }
 
             return CrearDto(
@@ -121,28 +122,28 @@ namespace ControlInventario.Services.Services
 
                     throw new BusinessException(
                         "Producto no encontrado.",
-                        404);
+                        HttpStatusCode.NotFound);
 
                 case MotivoRechazoMovimiento
                     .UsuarioNoEncontrado:
 
                     throw new BusinessException(
                         "Usuario no encontrado.",
-                        404);
+                        HttpStatusCode.NotFound);
 
                 case MotivoRechazoMovimiento
                     .ProductoInactivo:
 
                     throw new BusinessException(
                         "El producto está desactivado y no admite movimientos de inventario.",
-                        400);
+                        HttpStatusCode.BadRequest);
 
                 case MotivoRechazoMovimiento
                     .StockInsuficiente:
 
                     throw new BusinessException(
                         "Stock insuficiente para registrar la salida.",
-                        409,
+                        HttpStatusCode.Conflict,
                         new
                         {
                             stockDisponible =
@@ -153,7 +154,7 @@ namespace ControlInventario.Services.Services
 
                     throw new BusinessException(
                         "No fue posible registrar el movimiento de inventario.",
-                        400);
+                        HttpStatusCode.BadRequest);
             }
         }
 

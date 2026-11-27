@@ -17,10 +17,6 @@ public partial class InventarioContext : DbContext
     {
     }
 
-    // TABLAS DEL SISTEMA DE INVENTARIO
-
-    public virtual DbSet<User> Users { get; set; }
-
     public virtual DbSet<Rol> Roles { get; set; }
 
     public virtual DbSet<Usuario> Usuarios { get; set; }
@@ -29,11 +25,11 @@ public partial class InventarioContext : DbContext
 
     public virtual DbSet<Producto> Productos { get; set; }
 
-    public virtual DbSet<MovimientoInventario>
-        MovimientosInventario { get; set; }
+    public virtual DbSet<HistorialProducto> HistorialProductos { get; set; }
 
-    protected override void OnModelCreating(
-        ModelBuilder modelBuilder)
+    public virtual DbSet<MovimientoInventario> MovimientosInventario { get; set; }
+
+    protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.ApplyConfigurationsFromAssembly(
             Assembly.GetExecutingAssembly());

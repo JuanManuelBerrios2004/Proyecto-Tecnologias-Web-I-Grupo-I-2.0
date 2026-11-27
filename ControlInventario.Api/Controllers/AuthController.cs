@@ -1,7 +1,9 @@
 using System.IdentityModel.Tokens.Jwt;
+using FluentValidation;
 using ControlInventario.Api.Response;
 using ControlInventario.Core.DTOs;
 using ControlInventario.Services.Interfaces;
+using ControlInventario.Services.Validators;
 using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,33 +14,31 @@ namespace ControlInventario.Api.Controllers
     public class AuthController : ControllerBase
     {
         private readonly IAuthService _authService;
+        private readonly LoginDtoValidator _loginValidator;
 
-        public AuthController(IAuthService authService)
+        public AuthController(
+            IAuthService authService,
+            LoginDtoValidator loginValidator)
         {
             _authService = authService;
+            _loginValidator = loginValidator;
         }
 
-      
-        /// CU-01: Iniciar Sesión y obtener token JWT
-   
         [HttpPost("login")]
         [AllowAnonymous]
         public async Task<IActionResult> Login([FromBody] LoginDto loginDto)
         {
+            await _loginValidator.ValidateAndThrowAsync(loginDto);
             var result = await _authService.LoginAsync(loginDto);
             return Ok(new ApiResponse<AuthResponseDto>(result));
         }
 
-      
-        /// CU-08: Cerrar Sesión invalidando el token actual
-     
         [HttpPost("logout")]
         [Authorize]
         public async Task<IActionResult> Logout()
         {
             var jti = User.FindFirst(JwtRegisteredClaimNames.Jti)?.Value;
             var expClaim = User.FindFirst(JwtRegisteredClaimNames.Exp)?.Value;
-
             var expiration = long.TryParse(expClaim, out var expUnix)
                 ? DateTimeOffset.FromUnixTimeSeconds(expUnix).UtcDateTime
                 : DateTime.UtcNow.AddMinutes(60);

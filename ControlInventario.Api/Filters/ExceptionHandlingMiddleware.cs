@@ -34,7 +34,7 @@ namespace ControlInventario.Api.Filters
             {
                 await _next(context);
             }
-            catch (Exception ex)
+            catch (Exception ex) when (!context.Response.HasStarted)
             {
                 _logger.LogError(
                     ex,
@@ -65,7 +65,7 @@ namespace ControlInventario.Api.Filters
 
                 case ValidationException valEx:
                     code = HttpStatusCode.BadRequest;
-                    message = "Errores de validacion en los datos enviados.";
+                    message = "Errores de validación en los datos enviados.";
 
                     errors = valEx.Errors.Select(e => new
                     {

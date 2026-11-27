@@ -20,8 +20,6 @@ namespace ControlInventario.Core.DTOs
 
         public DateTime CreadoEn { get; set; }
 
-        public DateTime ActualizadoEn { get; set; }
-
         // Dato desnormalizado para mostrar en el catálogo; no es una columna de `productos`.
         public string? CategoriaNombre { get; set; }
     }

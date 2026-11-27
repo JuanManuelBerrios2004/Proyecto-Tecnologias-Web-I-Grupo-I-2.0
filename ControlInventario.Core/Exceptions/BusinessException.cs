@@ -1,4 +1,3 @@
-
 using System;
 using System.Net;
 
@@ -12,7 +11,7 @@ namespace ControlInventario.Core.Exceptions
 
         public BusinessException(
             string message,
-            int statusCode = 400,
+            int statusCode = (int)HttpStatusCode.BadRequest,
             object? details = null)
             : base(message)
         {

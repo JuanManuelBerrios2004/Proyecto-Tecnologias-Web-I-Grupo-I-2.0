@@ -10,7 +10,11 @@ namespace ControlInventario.Infrastructure.Data.Configurations
     {
         public void Configure(EntityTypeBuilder<Producto> entity)
         {
-            entity.ToTable("productos");
+            entity.ToTable("productos", tabla =>
+            {
+                tabla.HasCheckConstraint("chk_precio_venta", "precio_venta > precio_compra");
+                tabla.HasCheckConstraint("chk_stock_positivo", "stock_actual >= 0");
+            });
 
             entity.HasKey(x => x.Id);
 
@@ -21,6 +25,8 @@ namespace ControlInventario.Infrastructure.Data.Configurations
             entity.Property(x => x.CategoriaId)
                 .HasColumnName("categoria_id")
                 .IsRequired();
+
+            entity.HasIndex(x => x.Nombre).IsUnique().HasDatabaseName("nombre");
 
             entity.Property(x => x.Nombre)
                 .HasColumnName("nombre")
@@ -51,12 +57,6 @@ namespace ControlInventario.Infrastructure.Data.Configurations
                 .HasColumnName("creado_en")
                 .HasColumnType("timestamp")
                 .HasDefaultValueSql("CURRENT_TIMESTAMP");
-
-            // Fecha de ultima actualizacion
-            entity.Property(x => x.ActualizadoEn)
-                .HasColumnName("actualizado_en")
-                .HasColumnType("datetime(6)")
-                .IsRequired();
 
             entity.HasOne(x => x.Categoria)
                 .WithMany(x => x.Productos)

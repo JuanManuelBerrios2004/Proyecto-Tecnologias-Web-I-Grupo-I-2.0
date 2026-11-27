@@ -1,7 +1,10 @@
 using Microsoft.AspNetCore.Mvc;
+using Microsoft.AspNetCore.Authorization;
+using ControlInventario.Api.Response;
 using ControlInventario.Core.DTOs;
-using ControlInventario.Core.Interfaces;
+using ControlInventario.Services.Interfaces;
 using ControlInventario.Services.Validators;
+using ControlInventario.Core.Security;
 
 namespace ControlInventario.Api.Controllers
 {
@@ -9,24 +12,25 @@ namespace ControlInventario.Api.Controllers
     [ApiController]
     public class InventoryController : ControllerBase
     {
-        private readonly IProductoRepository _productoRepository;
+        private readonly IProductoService _productoService;
         private readonly ConsultaStockQueryDtoValidator _validator;
 
         public InventoryController(
-            IProductoRepository productoRepository,
+            IProductoService productoService,
             ConsultaStockQueryDtoValidator validator)
         {
-            _productoRepository = productoRepository;
+            _productoService = productoService;
             _validator = validator;
         }
 
         /// <summary>
         /// CU-05: Consultar stock disponible. Lista los productos activos (RN-08)
-        /// con nombre, categoría, stock actual y precio de venta, con filtros opcionales.
-        /// No modifica ningún dato.
+        /// con nombre, categorÃ­a, stock actual y precio de venta, con filtros opcionales.
+        /// No modifica ningÃºn dato.
+        /// Alias temporal compatible; la ruta oficial es /api/Producto/stock.
         /// </summary>
-        // TODO (CU-01): agregar [Authorize] cuando exista el login con JWT.
         [HttpGet("stock")]
+        [Authorize(Policy = RoleNames.ConsultaStockPolicy)]
         public async Task<IActionResult> GetStock([FromQuery] ConsultaStockQueryDto query)
         {
             var validationResult = await _validator.ValidateAsync(query);
@@ -34,7 +38,7 @@ namespace ControlInventario.Api.Controllers
             {
                 return BadRequest(new
                 {
-                    message = "Error de validación",
+                    message = "Error de validaciÃ³n",
                     errors = validationResult.Errors.Select(e => new
                     {
                         field = e.PropertyName,
@@ -43,33 +47,8 @@ namespace ControlInventario.Api.Controllers
                 });
             }
 
-            try
-            {
-                var productos = (await _productoRepository
-                    .GetStockProductosAsync(query.Nombre, query.CategoriaId)).ToList();
-
-                var hayFiltros = !string.IsNullOrWhiteSpace(query.Nombre) || query.CategoriaId.HasValue;
-
-                string mensaje;
-                if (productos.Count > 0)
-                    mensaje = "Consulta realizada correctamente.";
-                else if (hayFiltros)
-                    mensaje = "No se encontraron productos que coincidan con la búsqueda"; // Flujo alternativo 4a
-                else
-                    mensaje = "No hay productos activos registrados.";
-
-                return Ok(new ConsultaStockResponseDto
-                {
-                    Mensaje = mensaje,
-                    Total = productos.Count,
-                    Datos = productos
-                });
-            }
-            catch (Exception)
-            {
-                // No se expone el detalle interno de la base de datos al cliente.
-                return StatusCode(500, new { message = "Error al consultar el stock de productos" });
-            }
+            var response = await _productoService.ConsultarStockAsync(query.Nombre, query.CategoriaId);
+            return Ok(new ApiResponse<ConsultaStockResponseDto>(response));
         }
     }
 }

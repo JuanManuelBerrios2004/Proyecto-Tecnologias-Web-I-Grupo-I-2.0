@@ -1,4 +1,5 @@
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 namespace ControlInventario.Core.DTOs
 {
@@ -7,6 +8,12 @@ namespace ControlInventario.Core.DTOs
 		public string? Nombre { get; set; }
 
 		public int? CategoriaId { get; set; }
+
+		public bool? SoloActivos { get; set; }
+
+		// Conserva el valor vacío para rechazar explícitamente este parámetro.
+		[DisplayFormat(ConvertEmptyStringToNull = false)]
+		public string? StockMinimo { get; set; }
 	}
 
 	public class ConsultaStockResponseDto

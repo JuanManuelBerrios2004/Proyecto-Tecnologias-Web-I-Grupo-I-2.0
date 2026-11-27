@@ -8,8 +8,8 @@ namespace ControlInventario.Services.Validators
         public ConsultaStockQueryDtoValidator()
         {
             RuleFor(x => x.Nombre)
-                .MaximumLength(100)
-                .WithMessage("El término de búsqueda no puede exceder los 100 caracteres.");
+                .Must(nombre => nombre == null || nombre.Trim().Length <= 100)
+                .WithMessage("El tÃ©rmino de bÃºsqueda no puede exceder los 100 caracteres.");
 
             RuleFor(x => x.CategoriaId)
                 .GreaterThan(0)

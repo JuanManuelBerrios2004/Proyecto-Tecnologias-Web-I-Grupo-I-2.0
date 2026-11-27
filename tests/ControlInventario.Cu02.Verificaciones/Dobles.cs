@@ -134,7 +134,7 @@ internal sealed class ProductosEnMemoria(UnidadEnMemoria unidad) : IProductoRepo
     {
         return Task.FromResult<IEnumerable<ProductoStockDto>>(Filas.Where(p =>
             p.Activo && (categoriaId == null || p.CategoriaId == categoriaId) &&
-            (nombre == null || p.Nombre.Contains(nombre, StringComparison.OrdinalIgnoreCase)))
+            (nombre == null || p.Nombre.Contains(nombre.Trim(), StringComparison.OrdinalIgnoreCase)))
             .Select(p => new ProductoStockDto
             {
                 Id = p.Id,
@@ -144,6 +144,25 @@ internal sealed class ProductosEnMemoria(UnidadEnMemoria unidad) : IProductoRepo
                 StockActual = p.StockActual,
                 PrecioVenta = p.PrecioVenta
             }).ToArray());
+    }
+
+    public async Task<ConsultaStockResponseDto> ConsultarStockAsync(string? nombre, int? categoriaId)
+    {
+        var normalizado = string.IsNullOrWhiteSpace(nombre) ? null : nombre.Trim();
+        var datos = (await GetStockProductosAsync(normalizado, categoriaId)).ToList();
+        var hayFiltros = normalizado != null || categoriaId.HasValue;
+        var mensaje = datos.Count == 0
+            ? hayFiltros
+                ? "No se encontraron productos que coincidan con la búsqueda"
+                : "No hay productos activos registrados."
+            : "Consulta realizada correctamente.";
+
+        return new ConsultaStockResponseDto
+        {
+            Mensaje = mensaje,
+            Total = datos.Count,
+            Datos = datos
+        };
     }
 
     public Task Add(Producto producto)

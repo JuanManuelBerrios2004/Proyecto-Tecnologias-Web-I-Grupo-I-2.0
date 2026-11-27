@@ -36,7 +36,28 @@ namespace ControlInventario.Services.Services
 
         public Task<IEnumerable<ProductoStockDto>> GetStockProductosAsync(string? nombre, int? categoriaId)
         {
-            return _unitOfWork.ProductoRepository.GetStockProductosAsync(nombre, categoriaId);
+            var nombreNormalizado = string.IsNullOrWhiteSpace(nombre) ? null : nombre.Trim();
+            return _unitOfWork.ProductoRepository.GetStockProductosAsync(nombreNormalizado, categoriaId);
+        }
+
+        public async Task<ConsultaStockResponseDto> ConsultarStockAsync(string? nombre, int? categoriaId)
+        {
+            var nombreNormalizado = string.IsNullOrWhiteSpace(nombre) ? null : nombre.Trim();
+            var stock = (await GetStockProductosAsync(nombreNormalizado, categoriaId)).ToList();
+            var hayFiltros = nombreNormalizado != null || categoriaId.HasValue;
+
+            var mensaje = stock.Count == 0
+                ? hayFiltros
+                    ? "No se encontraron productos que coincidan con la búsqueda"
+                    : "No hay productos activos registrados."
+                : "Consulta realizada correctamente.";
+
+            return new ConsultaStockResponseDto
+            {
+                Mensaje = mensaje,
+                Total = stock.Count,
+                Datos = stock
+            };
         }
 
         public async Task<Producto> InsertProducto(Producto producto)

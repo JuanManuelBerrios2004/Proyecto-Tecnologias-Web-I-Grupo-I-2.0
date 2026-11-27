@@ -86,17 +86,8 @@ namespace ControlInventario.Api.Controllers
                 });
             }
 
-            try
-            {
-                var stock = await _productoService.GetStockProductosAsync(query.Nombre, query.CategoriaId);
-
-                var response = new ApiResponse<IEnumerable<ProductoStockDto>>(stock);
-                return Ok(response);
-            }
-            catch (Exception)
-            {
-                return StatusCode(500, new { message = "Error al obtener el stock de productos" });
-            }
+            var response = await _productoService.ConsultarStockAsync(query.Nombre, query.CategoriaId);
+            return Ok(new ApiResponse<ConsultaStockResponseDto>(response));
         }
 
         #endregion

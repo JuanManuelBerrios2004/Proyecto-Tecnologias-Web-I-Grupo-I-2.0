@@ -272,11 +272,70 @@ await Probar("compatibilidad con categorías y ambas rutas de stock", async (api
     var categorias = new CategoriaService(u);
     await Error(() => categorias.DeleteCategoria(2),409,"No se puede eliminar la categoría porque tiene productos asociados");
     var filtro = new ConsultaStockQueryDto { CategoriaId = 2 };
-    var resultado = (ApiResponse<IEnumerable<ProductoStockDto>>)((OkObjectResult)await api.GetStockProductos(filtro)).Value!;
+    var resultado = (ApiResponse<ConsultaStockResponseDto>)((OkObjectResult)await api.GetStockProductos(filtro)).Value!;
     var inventory = ActivatorUtilities.CreateInstance<InventoryController>(sp);
-    var stock = (ConsultaStockResponseDto)((OkObjectResult)await inventory.GetStock(filtro)).Value!;
-    Exigir(resultado.Data.Single().Id == 11 && stock.Datos.Single().Id == 11);
+    var stock = (ApiResponse<ConsultaStockResponseDto>)((OkObjectResult)await inventory.GetStock(filtro)).Value!;
+    Exigir(resultado.Data.Datos.Single().Id == 11 &&
+        stock.Data.Datos.Single().Id == 11 &&
+        resultado.Data.Total == 1 &&
+        stock.Data.Total == 1);
 });
+
+await Probar("CU-05 consulta sin filtros y normaliza nombre", async (api,u,_) =>
+{
+    u.Productos.Filas.Add(Fila());
+    var activoCero = Fila(12,"Teclado",true);
+    activoCero.StockActual = 0;
+    u.Productos.Filas.Add(activoCero);
+    u.Productos.Filas.Add(Fila(13,"Inactivo",false));
+
+    var sinFiltros = (ApiResponse<ConsultaStockResponseDto>)((OkObjectResult)await api.GetStockProductos(new ConsultaStockQueryDto())).Value!;
+    Exigir(sinFiltros.Data.Total == 2 &&
+        sinFiltros.Data.Datos.Count() == 2 &&
+        sinFiltros.Data.Datos.Any(p => p.StockActual == 0));
+
+    var conEspacios = (ApiResponse<ConsultaStockResponseDto>)((OkObjectResult)await api.GetStockProductos(
+        new ConsultaStockQueryDto { Nombre = "  tecla  " })).Value!;
+    Exigir(conEspacios.Data.Total == 1 &&
+        conEspacios.Data.Datos.Single().Nombre == "Teclado");
+},0,0);
+
+await Probar("CU-05 combina filtros y excluye inactivos", async (api,u,_) =>
+{
+    u.Productos.Filas.Add(Fila(11,"Teclado",true));
+    u.Productos.Filas.Add(Fila(12,"Teclado gamer",false));
+    u.Productos.Filas.Add(Fila(13,"Mouse",true));
+
+    var filtro = new ConsultaStockQueryDto { Nombre = "teclado", CategoriaId = 2 };
+    var resultado = (ApiResponse<ConsultaStockResponseDto>)((OkObjectResult)await api.GetStockProductos(filtro)).Value!;
+    Exigir(resultado.Data.Total == 1 &&
+        resultado.Data.Datos.Single().Nombre == "Teclado");
+},0,0);
+
+await Probar("CU-05 devuelve colección vacía y mensaje exacto", async (api,u,_) =>
+{
+    u.Productos.Filas.Add(Fila(11,"Teclado",true));
+    var resultado = (ApiResponse<ConsultaStockResponseDto>)((OkObjectResult)await api.GetStockProductos(
+        new ConsultaStockQueryDto { Nombre = "mouse" })).Value!;
+    Exigir(resultado.Data.Total == 0 &&
+        resultado.Data.Datos != null &&
+        !resultado.Data.Datos.Any() &&
+        resultado.Data.Mensaje == "No se encontraron productos que coincidan con la búsqueda");
+},0,0);
+
+await Probar("CU-05 rechaza categoría, nombre y parámetros incompatibles", async (api,u,sp) =>
+{
+    var validador = sp.GetRequiredService<ConsultaStockQueryDtoValidator>();
+    Exigir(!(await validador.ValidateAsync(new ConsultaStockQueryDto { CategoriaId = 0 })).IsValid);
+    Exigir(!(await validador.ValidateAsync(new ConsultaStockQueryDto { CategoriaId = -2 })).IsValid);
+    Exigir(!(await validador.ValidateAsync(new ConsultaStockQueryDto { Nombre = new string('x',101) })).IsValid);
+    Exigir(!(await validador.ValidateAsync(new ConsultaStockQueryDto { SoloActivos = false })).IsValid);
+    Exigir(!(await validador.ValidateAsync(new ConsultaStockQueryDto { StockMinimo = "1" })).IsValid);
+
+    var categoriaInvalida = (BadRequestObjectResult)await api.GetStockProductos(
+        new ConsultaStockQueryDto { CategoriaId = 0 });
+    Exigir(categoriaInvalida.StatusCode == 400);
+},0,0);
 
 await Probar("AutoMapper protege stock, fecha, estado y relaciones", (_,_,sp) =>
 {

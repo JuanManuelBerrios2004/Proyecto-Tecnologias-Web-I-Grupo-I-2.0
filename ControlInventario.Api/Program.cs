@@ -1,13 +1,11 @@
+
 using Microsoft.EntityFrameworkCore;
 
 using ControlInventario.Api.Middlewares;
-
 using ControlInventario.Core.Interfaces;
-
 using ControlInventario.Infrastructure.Data;
 using ControlInventario.Infrastructure.Mappings;
 using ControlInventario.Infrastructure.Repositories;
-
 using ControlInventario.Services.Interfaces;
 using ControlInventario.Services.Services;
 using ControlInventario.Services.Validators;
@@ -16,39 +14,28 @@ namespace ControlInventario.Api
 {
     public class Program
     {
-        public static void Main(
-            string[] args)
+        public static void Main(string[] args)
         {
-            var builder =
-                WebApplication.CreateBuilder(args);
+            var builder = WebApplication.CreateBuilder(args);
 
-            var connectionString =
-                builder.Configuration
-                    .GetConnectionString(
-                        "ConnectionMySql");
+            // CONFIGURACION DE MYSQL
+            var connectionString = builder.Configuration
+                .GetConnectionString("ConnectionMySql");
 
-            builder.Services.AddDbContext<
-                InventarioContext>(
-                    options =>
-                    {
-                        options.UseMySql(
-                            connectionString,
-                            ServerVersion.AutoDetect(
-                                connectionString));
-                    });
+            if (string.IsNullOrWhiteSpace(connectionString))
+            {
+                throw new InvalidOperationException(
+                    "No se configuro ConnectionMySql.");
+            }
 
-            /*
-             * REPOSITORIOS EXISTENTES
-             */
+            builder.Services.AddDbContext<InventarioContext>(
+                options => options.UseMySql(
+                    connectionString,
+                    ServerVersion.AutoDetect(connectionString)
+                )
+            );
 
-            builder.Services.AddTransient<
-                IPostRepository,
-                PostRepository>();
-
-            builder.Services.AddTransient<
-                ICommentRepository,
-                CommentRepository>();
-
+            // REPOSITORIOS
             builder.Services.AddTransient<
                 IUsuarioRepository,
                 UsuarioRepository>();
@@ -61,74 +48,35 @@ namespace ControlInventario.Api
                 IProductoRepository,
                 ProductoRepository>();
 
-            /*
-             * REPOSITORIO CU-03
-             */
-
             builder.Services.AddScoped<
                 IMovimientoInventarioRepository,
                 MovimientoInventarioRepository>();
 
-            /*
-             * SERVICE CU-03
-             */
-
+            // SERVICIOS CU-03 Y CU-04
             builder.Services.AddScoped<
                 IMovimientoInventarioService,
                 MovimientoInventarioService>();
 
+            builder.Services.AddScoped<
+                ISalidaMercaderiaService,
+                SalidaMercaderiaService>();
 
+            // CONTROLADORES Y OPENAPI
             builder.Services.AddControllers();
-
             builder.Services.AddOpenApi();
 
+            // AUTOMAPPER
             builder.Services.AddAutoMapper(
-                typeof(PostProfile).Assembly);
+                typeof(ProductoProfile).Assembly);
 
-            /*
-             * VALIDADORES EXISTENTES
-             */
-
-            builder.Services.AddScoped<
-                PostDtoValidator>();
-
-            builder.Services.AddScoped<
-                CrearPostDtoValidator>();
-
-            builder.Services.AddScoped<
-                ActualizarPostDtoValidator>();
-
-            builder.Services.AddScoped<
-                CrearProductoDtoValidator>();
-
-            builder.Services.AddScoped<
-                ActualizarProductoDtoValidator>();
-
-            builder.Services.AddScoped<
-                CategoriaDtoValidator>();
-
-            builder.Services.AddScoped<
-                ProductoDtoValidator>();
-
-            builder.Services.AddScoped<
-                CrearMovimientoDtoValidator>();
-
-            /*
-             * VALIDADOR CU-03
-             */
-
-            builder.Services.AddScoped<
-                RegistrarEntradaDtoValidator>();
-
-            //Registrar Validadores de FluentValidator
-            builder.Services.AddScoped<PostDtoValidator>();
-            builder.Services.AddScoped<CrearPostDtoValidator>();
-            builder.Services.AddScoped<ActualizarPostDtoValidator>();
+            // VALIDADORES
             builder.Services.AddScoped<CrearProductoDtoValidator>();
             builder.Services.AddScoped<ActualizarProductoDtoValidator>();
             builder.Services.AddScoped<CategoriaDtoValidator>();
             builder.Services.AddScoped<ProductoDtoValidator>();
             builder.Services.AddScoped<CrearMovimientoDtoValidator>();
+            builder.Services.AddScoped<RegistrarEntradaDtoValidator>();
+            builder.Services.AddScoped<RegistrarSalidaDtoValidator>();
             builder.Services.AddScoped<LoginDtoValidator>();
             builder.Services.AddScoped<ConsultaStockQueryDtoValidator>();
 
@@ -139,16 +87,10 @@ namespace ControlInventario.Api
                 app.MapOpenApi();
             }
 
-            /*
-             * MIDDLEWARE GLOBAL
-             * DE EXCEPCIONES
-             */
-
-            app.UseMiddleware<
-                ExceptionMiddleware>();
+            // MANEJO GLOBAL DE ERRORES
+            app.UseMiddleware<ExceptionMiddleware>();
 
             app.UseHttpsRedirection();
-
             app.UseAuthorization();
 
             app.MapControllers();

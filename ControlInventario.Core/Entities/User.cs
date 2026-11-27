@@ -1,7 +1,8 @@
-﻿using System;
-using System.Collections.Generic;
+﻿
+using System;
 
 namespace ControlInventario.Core.Entities;
+
 public partial class User
 {
     public int Id { get; set; }
@@ -17,8 +18,4 @@ public partial class User
     public string? Telephone { get; set; }
 
     public ulong IsActive { get; set; }
-
-    public virtual ICollection<Comment> Comments { get; set; } = new List<Comment>();
-
-    public virtual ICollection<Post> Posts { get; set; } = new List<Post>();
 }

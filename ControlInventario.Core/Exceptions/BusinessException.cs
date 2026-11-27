@@ -1,4 +1,6 @@
+
 using System;
+using System.Net;
 
 namespace ControlInventario.Core.Exceptions
 {
@@ -16,6 +18,14 @@ namespace ControlInventario.Core.Exceptions
         {
             StatusCode = statusCode;
             Details = details;
+        }
+
+        public BusinessException(
+            string message,
+            HttpStatusCode statusCode,
+            object? details = null)
+            : this(message, (int)statusCode, details)
+        {
         }
     }
 }

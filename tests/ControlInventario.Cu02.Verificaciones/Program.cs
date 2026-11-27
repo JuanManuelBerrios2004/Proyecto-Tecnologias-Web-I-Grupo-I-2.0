@@ -34,6 +34,7 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using ControlInventario.Core.Security;
+using ControlInventario.Services.Integracion;
 using ControlInventario.Api.Security;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -804,7 +805,70 @@ await ProbarCategorias("Metadatos EF de categorías", async (u,_) =>
 
 await EjecutarPruebasHttpAislado();
 
-Console.WriteLine($"TOTAL_APROBADAS={total}; INTEGRACION_MYSQL=PENDIENTE; HTTP_AISLADO=EJECUTADO");
+await ProbarProteccionMySql("protección MySQL rechaza configuración ausente", () =>
+{
+    ErrorConfiguracion(() => ConfiguracionMySqlIntegracion.Validar(null));
+});
+
+await ProbarProteccionMySql("protección MySQL rechaza cadena inválida", () =>
+{
+    ErrorConfiguracion(() => ConfiguracionMySqlIntegracion.Validar("cadena=inválida"));
+});
+
+await ProbarProteccionMySql("protección MySQL rechaza base incorrecta e inventario_db", () =>
+{
+    ErrorConfiguracion(() => ConfiguracionMySqlIntegracion.Validar(
+        "Server=127.0.0.1;Port=3306;Database=inventario_db;User=inventario_integracion;Password=Prueba"));
+    ErrorConfiguracion(() => ConfiguracionMySqlIntegracion.Validar(
+        "Server=127.0.0.1;Port=3306;Database=otra_base;User=inventario_integracion;Password=Prueba"));
+});
+
+await ProbarProteccionMySql("protección MySQL rechaza servidor remoto", () =>
+{
+    ErrorConfiguracion(() => ConfiguracionMySqlIntegracion.Validar(
+        "Server=db.remoto.local;Port=3306;Database=inventario_cu02_cu05_cu06_test;User=inventario_integracion;Password=Prueba"));
+});
+
+await ProbarProteccionMySql("protección MySQL rechaza root y usuarios administrativos", () =>
+{
+    foreach (var usuario in new[] { "root", "administrator", "admin", "mysql.sys" })
+    {
+        ErrorConfiguracion(() => ConfiguracionMySqlIntegracion.Validar(
+            $"Server=127.0.0.1;Port=3306;Database=inventario_cu02_cu05_cu06_test;User={usuario};Password=Prueba"));
+    }
+});
+
+await ProbarProteccionMySql("protección MySQL rechaza usuario no autorizado y puerto incorrecto", () =>
+{
+    ErrorConfiguracion(() => ConfiguracionMySqlIntegracion.Validar(
+        "Server=127.0.0.1;Port=3306;Database=inventario_cu02_cu05_cu06_test;User=otro_usuario;Password=Prueba"));
+    ErrorConfiguracion(() => ConfiguracionMySqlIntegracion.Validar(
+        "Server=127.0.0.1;Port=3307;Database=inventario_cu02_cu05_cu06_test;User=inventario_integracion;Password=Prueba"));
+});
+
+await ProbarProteccionMySql("protección MySQL acepta configuración sintética válida", () =>
+{
+    var builder = ConfiguracionMySqlIntegracion.Validar(
+        "Server=127.0.0.1;Port=3306;Database=inventario_cu02_cu05_cu06_test;User=inventario_integracion;Password=Prueba");
+    Exigir(builder.Database == ConfiguracionMySqlIntegracion.BaseAutorizada);
+    Exigir(builder.Port == ConfiguracionMySqlIntegracion.PuertoAutorizado);
+    Exigir(builder.UserID == ConfiguracionMySqlIntegracion.UsuarioAutorizado);
+});
+
+await ProbarProteccionMySql("datos sintéticos generan hashes sin contraseñas almacenadas", () =>
+{
+    var hasher = new PasswordHasher<Usuario>();
+    var datos = DatosSinteticos.Preparar(hasher);
+    Exigir(datos.Contrasenas.Count == 4);
+    Exigir(datos.Roles.Count == 3);
+    Exigir(datos.Usuarios.Count == 4);
+    Exigir(datos.Categorias.Count == 3);
+    Exigir(datos.Productos.Count == 4);
+    Exigir(datos.Contrasenas.Values.All(valor =>
+        valor.StartsWith("Integracion-Solo-Prueba-", StringComparison.Ordinal)));
+});
+
+Console.WriteLine($"TOTAL_APROBADAS={total}; INTEGRACION_MYSQL=PENDIENTE_SIN_CONEXION; HTTP_AISLADO=EJECUTADO");
 
 async Task Probar(string nombre, Func<ProductoController,UnidadEnMemoria,IServiceProvider,Task> caso,int guardados=0,int confirmaciones=0)
 {
@@ -1264,6 +1328,35 @@ async Task ProbarHttp(string nombre, Func<Task> caso)
         Console.Error.WriteLine("FALLO HTTP " + nombre);
         throw;
     }
+}
+
+async Task ProbarProteccionMySql(string nombre, Action caso)
+{
+    try
+    {
+        await Task.Run(caso);
+        total++;
+        Console.WriteLine("OK MYSQL " + nombre);
+    }
+    catch
+    {
+        Console.Error.WriteLine("FALLO MYSQL " + nombre);
+        throw;
+    }
+}
+
+static void ErrorConfiguracion(Action accion)
+{
+    var rechazado = false;
+    try
+    {
+        accion();
+    }
+    catch (InvalidOperationException)
+    {
+        rechazado = true;
+    }
+    Exigir(rechazado, "La configuración insegura fue aceptada.");
 }
 
 static void Historial(UnidadEnMemoria unidad,params string[] campos)

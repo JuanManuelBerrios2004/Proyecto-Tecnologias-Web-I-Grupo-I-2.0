@@ -36,7 +36,7 @@ Abra MySQL interactivamente:
 
 No coloque la contraseña en el comando ni en un archivo.
 
-Ejecute primero `01_prepare_admin.sql` y reemplace los marcadores de contraseña solo dentro de la sesión interactiva. Después aplique:
+Ejecute primero `01_prepare_admin.sql`. MySQL 8 genera una contraseña aleatoria para cada cuenta y devuelve el valor en la columna `Generated password`. Guarde inmediatamente cada valor en un gestor de secretos privado. No copie esas contraseñas al chat, a archivos versionados ni a capturas. Después aplique:
 
 ```sql
 USE inventario_cu02_cu05_cu06_test;

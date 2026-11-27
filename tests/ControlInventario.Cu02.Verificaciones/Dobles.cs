@@ -21,6 +21,7 @@ internal sealed class UnidadEnMemoria : IUnitOfWork
 
     public UsuariosEnMemoria Usuarios => _usuarios;
     public ProductosEnMemoria Productos { get; }
+    public CategoriasEnMemoria Categorias => _categorias;
     public List<HistorialProducto> Historial { get; } = [];
     public int Guardados { get; private set; }
     public int Confirmaciones { get; private set; }
@@ -45,6 +46,7 @@ internal sealed class UnidadEnMemoria : IUnitOfWork
         }
 
         Productos.Confirmar();
+        _categorias.Confirmar();
         foreach (var fila in _historial.Pendientes)
         {
             fila.FechaModificacion = FechaGenerada;
@@ -81,6 +83,7 @@ internal sealed class UnidadEnMemoria : IUnitOfWork
             EnTransaccion = false;
             Reversiones++;
             Productos.Descartar();
+            _categorias.Descartar();
             _historial.Pendientes.Clear();
         }
 
@@ -247,20 +250,68 @@ internal sealed class HistorialEnMemoria(UnidadEnMemoria unidad) : IHistorialPro
 
 internal sealed class CategoriasEnMemoria(ProductosEnMemoria productos) : ICategoriaRepository
 {
-    private readonly Categoria[] _categorias =
+    private readonly List<Categoria> _categorias =
     [
         new() { Id = 2, Nombre = "Alimentos" },
         new() { Id = 3, Nombre = "Bebidas" }
     ];
+    private Categoria? _alta;
+    private Categoria? _actualizacion;
+    private int? _baja;
 
+    public List<Categoria> Filas => _categorias;
     public Task<bool> ExisteCategoriaAsync(int id) => Task.FromResult(_categorias.Any(c => c.Id == id));
-    public Task<IEnumerable<Categoria>> GetAll() => Task.FromResult<IEnumerable<Categoria>>(_categorias);
+    public Task<IEnumerable<Categoria>> GetAll() => Task.FromResult<IEnumerable<Categoria>>(_categorias.ToArray());
     public Task<Categoria?> GetById(int id) => Task.FromResult(_categorias.FirstOrDefault(c => c.Id == id));
     public Task<bool> TieneProductosAsociadosAsync(int id) => Task.FromResult(productos.Filas.Any(p => p.CategoriaId == id));
-    public Task<bool> ExisteNombreAsync(string nombre, int? excluirId = null) => throw new NotSupportedException();
-    public Task Add(Categoria entity) => throw new NotSupportedException();
-    public void Update(Categoria entity) => throw new NotSupportedException();
-    public Task Delete(int id) => throw new NotSupportedException();
+    public Task<bool> ExisteNombreAsync(string nombre, int? excluirId = null) =>
+        Task.FromResult(_categorias.Any(c => c.Id != excluirId
+            && string.Equals(c.Nombre, nombre, StringComparison.OrdinalIgnoreCase)));
+    public Task Add(Categoria entity)
+    {
+        _alta = entity;
+        return Task.CompletedTask;
+    }
+    public void Update(Categoria entity)
+    {
+        _actualizacion = entity;
+    }
+    public Task Delete(int id)
+    {
+        _baja = id;
+        return Task.CompletedTask;
+    }
+
+    public void Confirmar()
+    {
+        if (_alta != null)
+        {
+            _alta.Id = _categorias.Count == 0 ? 1 : _categorias.Max(c => c.Id) + 1;
+            _alta.CreadoEn = UnidadEnMemoria.FechaGenerada;
+            _categorias.Add(_alta);
+        }
+
+        if (_actualizacion != null)
+        {
+            var destino = _categorias.Single(c => c.Id == _actualizacion.Id);
+            destino.Nombre = _actualizacion.Nombre;
+            destino.Descripcion = _actualizacion.Descripcion;
+        }
+
+        if (_baja.HasValue)
+        {
+            _categorias.RemoveAll(c => c.Id == _baja.Value);
+        }
+
+        Descartar();
+    }
+
+    public void Descartar()
+    {
+        _alta = null;
+        _actualizacion = null;
+        _baja = null;
+    }
 }
 
 internal sealed class UsuariosEnMemoria : IUsuarioRepository
@@ -279,7 +330,8 @@ internal sealed class UsuariosEnMemoria : IUsuarioRepository
         }
     ];
 
-    public Task<bool> ExisteUsuarioAsync(int id) => Task.FromResult(id == 27);
+    public Task<bool> ExisteUsuarioAsync(int id) =>
+        Task.FromResult(Filas.Any(usuario => usuario.Id == id && usuario.Activo));
     public Task<IEnumerable<Usuario>> GetAllUsuariosAsync() => throw new NotSupportedException();
     public Task<Usuario?> GetUsuarioByIdAsync(int id) =>
         Task.FromResult(Filas.FirstOrDefault(usuario => usuario.Id == id));

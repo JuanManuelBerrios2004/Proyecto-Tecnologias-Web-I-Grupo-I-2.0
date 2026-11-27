@@ -94,7 +94,9 @@ namespace ControlInventario.Services.Services
         private static bool EsIndiceDelNombre(MySqlException error)
         {
             var mensaje = error.Message.TrimEnd();
-            return mensaje.EndsWith("'nombre'", StringComparison.OrdinalIgnoreCase)
+            return mensaje.Contains("IX_categorias_Nombre", StringComparison.OrdinalIgnoreCase)
+                || mensaje.Contains("categorias.nombre", StringComparison.OrdinalIgnoreCase)
+                || mensaje.EndsWith("'nombre'", StringComparison.OrdinalIgnoreCase)
                 || mensaje.EndsWith("'categorias.nombre'", StringComparison.OrdinalIgnoreCase)
                 || mensaje.EndsWith("'IX_categorias_Nombre'", StringComparison.OrdinalIgnoreCase)
                 || mensaje.EndsWith("'categorias.IX_categorias_Nombre'", StringComparison.OrdinalIgnoreCase);
@@ -104,6 +106,7 @@ namespace ControlInventario.Services.Services
         {
             var mensaje = error.Message;
             return mensaje.Contains("`fk_productos_categorias`", StringComparison.OrdinalIgnoreCase)
+                || mensaje.Contains("CONSTRAINT `fk_productos_categorias`", StringComparison.OrdinalIgnoreCase)
                 || (mensaje.Contains("`productos`", StringComparison.OrdinalIgnoreCase)
                     && mensaje.Contains("FOREIGN KEY (`categoria_id`) REFERENCES `categorias` (`id`)",
                         StringComparison.OrdinalIgnoreCase));

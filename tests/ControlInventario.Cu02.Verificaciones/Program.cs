@@ -3,12 +3,14 @@ using System.Reflection;
 using System.Security.Claims;
 using System.Text.Json;
 using System.Text;
+using System.Net;
 using AutoMapper;
 using ControlInventario.Api.Controllers;
 using ControlInventario.Api.Filters;
 using ControlInventario.Api.Response;
 using ControlInventario.Core.DTOs;
 using ControlInventario.Core.Entities;
+using ControlInventario.Core.Exceptions;
 using ControlInventario.Core.Interfaces;
 using ControlInventario.Cu02.Verificaciones;
 using ControlInventario.Infrastructure.Data;
@@ -32,6 +34,15 @@ using Microsoft.Extensions.Options;
 using Microsoft.IdentityModel.Tokens;
 using System.IdentityModel.Tokens.Jwt;
 using ControlInventario.Core.Security;
+using ControlInventario.Api.Security;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.AspNetCore.Hosting.Server;
+using Microsoft.AspNetCore.Hosting.Server.Features;
+using Microsoft.AspNetCore.Routing;
+using Microsoft.Extensions.Configuration;
+using Microsoft.Extensions.Hosting;
+using System.Net.Http.Json;
 
 const string Invalido = "Errores de validación en los datos enviados.";
 const string Precio = "El precio de venta debe ser superior al costo de compra";
@@ -47,8 +58,11 @@ registros.AddAutoMapper(typeof(ProductoProfile).Assembly);
 registros.AddScoped<UnidadEnMemoria>();
 registros.AddScoped<IUnitOfWork>(sp => sp.GetRequiredService<UnidadEnMemoria>());
 registros.AddTransient<IProductoService, ProductoService>();
+registros.AddTransient<ICategoriaService, CategoriaService>();
 registros.AddScoped<CrearProductoDtoValidator>();
 registros.AddScoped<ActualizarProductoDtoValidator>();
+registros.AddScoped<CrearCategoriaDtoValidator>();
+registros.AddScoped<ActualizarCategoriaDtoValidator>();
 registros.AddScoped<ConsultaStockQueryDtoValidator>();
 registros.AddScoped<LoginDtoValidator>();
 registros.AddScoped<PasswordHasher<Usuario>>();
@@ -72,7 +86,7 @@ await Probar("P01 listado y filtros del catálogo", async (api, u, _) =>
     Exigir(lista.Count() == 2 && lista.Any(p => !p.Activo));
     var activos = ((ApiResponse<IEnumerable<ProductoDto>>)((OkObjectResult)await api.GetProductos("pan", 2, true)).Value!).Data;
     Exigir(activos.Single().Id == 11);
-});
+},0);
 
 await Probar("P01 detalle con categoría y 404", async (api, u, _) =>
 {
@@ -634,7 +648,163 @@ await Probar("metadatos EF, contexto único y cambio solo de campos editables", 
     }
 });
 
-Console.WriteLine($"TOTAL_APROBADAS={total}; INTEGRACION_MYSQL=PENDIENTE; AUTORIZACION=PENDIENTE");
+await ProbarCategorias("C01 listado, detalle y lecturas sin guardados", async (u,sp) =>
+{
+    var service = new CategoriaService(u);
+    var categorias = (await service.GetCategoriasAsync()).ToList();
+    Exigir(categorias.Count == 2);
+    Exigir((await service.GetCategoriaByIdAsync(2)).Nombre == "Alimentos");
+    await Error(async () => await service.GetCategoriaByIdAsync(999),404,"Categoría no encontrada.");
+    Exigir(u.Guardados == 0);
+},0);
+
+await ProbarCategorias("C01 listado vacío", async (u,_) =>
+{
+    u.Categorias.Filas.Clear();
+    var service = new CategoriaService(u);
+    Exigir(!(await service.GetCategoriasAsync()).Any());
+    Exigir(u.Guardados == 0);
+},0);
+
+await ProbarCategorias("C02/C03 creación válida y normalización", async (u,sp) =>
+{
+    var service = new CategoriaService(u);
+    var creada = await service.InsertCategoria(new Categoria
+    {
+        Nombre = "  Limpieza  ",
+        Descripcion = null
+    });
+    Exigir(creada.Id == 4 && creada.Nombre == "Limpieza");
+    Exigir(creada.CreadoEn == UnidadEnMemoria.FechaGenerada);
+    Exigir(u.Guardados == 1);
+
+    var validador = sp.GetRequiredService<CrearCategoriaDtoValidator>();
+    Exigir(!(await validador.ValidateAsync(new CrearCategoriaDto())).IsValid);
+    Exigir(!(await validador.ValidateAsync(new CrearCategoriaDto { Nombre = " " })).IsValid);
+    Exigir(!(await validador.ValidateAsync(new CrearCategoriaDto { Nombre = new string('x',51) })).IsValid);
+    Exigir(!(await validador.ValidateAsync(new CrearCategoriaDto { Nombre = new string('x',50), Descripcion = new string('d',201) })).IsValid);
+    Exigir((await validador.ValidateAsync(new CrearCategoriaDto { Nombre = new string('x',50), Descripcion = new string('d',200) })).IsValid);
+},1);
+
+await ProbarCategorias("C04 nombre duplicado y ausencia de guardado", async (u,_) =>
+{
+    var service = new CategoriaService(u);
+    await Error(
+        () => service.InsertCategoria(new Categoria { Nombre = "Alimentos" }),
+        409,
+        "Esta categoría ya se encuentra registrada");
+    Exigir(u.Guardados == 0);
+},0);
+
+await ProbarCategorias("C05 actualización válida y conservación", async (u,_) =>
+{
+    var original = u.Categorias.Filas.Single(c => c.Id == 2);
+    original.CreadoEn = UnidadEnMemoria.FechaGenerada.AddDays(-1);
+    var service = new CategoriaService(u);
+    var actualizada = await service.UpdateCategoria(2, new Categoria
+    {
+        Nombre = "  Abarrotes  ",
+        Descripcion = "Productos diversos"
+    });
+    Exigir(actualizada.Id == 2 &&
+        actualizada.Nombre == "Abarrotes" &&
+        actualizada.CreadoEn == UnidadEnMemoria.FechaGenerada.AddDays(-1) &&
+        u.Guardados == 1);
+},1);
+
+await ProbarCategorias("C05 actualización inexistente y nombre de otra categoría", async (u,_) =>
+{
+    var service = new CategoriaService(u);
+    await Error(
+        () => service.UpdateCategoria(999, new Categoria { Nombre = "Nueva" }),
+        404,
+        "Categoría no encontrada.");
+    await Error(
+        () => service.UpdateCategoria(2, new Categoria { Nombre = "Bebidas" }),
+        409,
+        "Esta categoría ya se encuentra registrada");
+    Exigir(u.Guardados == 0);
+},0);
+
+await ProbarCategorias("C06-C08 eliminación, integridad y guardados", async (u,_) =>
+{
+    var service = new CategoriaService(u);
+    await service.DeleteCategoria(2);
+    Exigir(!u.Categorias.Filas.Any(c => c.Id == 2));
+    Exigir(u.Guardados == 1);
+},1);
+
+await ProbarCategorias("C07-C08 eliminación rechazada por productos asociados", async (u,_) =>
+{
+    u.Productos.Filas.Add(Fila(11,"Activo asociado",true));
+    u.Productos.Filas.Add(Fila(12,"Inactivo asociado",false));
+    var service = new CategoriaService(u);
+
+    await Error(
+        () => service.DeleteCategoria(2),
+        409,
+        "No se puede eliminar la categoría porque tiene productos asociados");
+    Exigir(u.Categorias.Filas.Any(c => c.Id == 2));
+    Exigir(u.Productos.Filas.Count == 2);
+    Exigir(u.Guardados == 0);
+},0);
+
+await ProbarCategorias("C09 inexistente y traducciones MySQL", async (u,_) =>
+{
+    var service = new CategoriaService(u);
+    await Error(
+        () => service.DeleteCategoria(999),
+        404,
+        "Categoría no encontrada.");
+
+    u.FalloAlGuardar = new DbUpdateException(
+        "Conflicto sintético",
+        MySql(1062,"Duplicate entry 'Alimentos' for key 'IX_categorias_Nombre'"));
+    try
+    {
+        await service.InsertCategoria(new Categoria { Nombre = "DuplicadaSQL" });
+        throw new InvalidOperationException("Se esperaba conflicto 1062.");
+    }
+    catch (BusinessException ex)
+    {
+        Exigir(ex.StatusCode == HttpStatusCode.Conflict);
+        Exigir(ex.Message == "Esta categoría ya se encuentra registrada");
+    }
+
+    u.FalloAlGuardar = new DbUpdateException(
+        "Conflicto sintético",
+        MySql(1451,"Cannot delete or update a parent row: `fk_productos_categorias`"));
+    try
+    {
+        await service.DeleteCategoria(3);
+        throw new InvalidOperationException("Se esperaba conflicto 1451.");
+    }
+    catch (BusinessException ex)
+    {
+        Exigir(ex.StatusCode == HttpStatusCode.Conflict);
+        Exigir(ex.Message == "No se puede eliminar la categoría porque tiene productos asociados");
+    }
+},2);
+
+await ProbarCategorias("Metadatos EF de categorías", async (u,_) =>
+{
+    var options = new DbContextOptionsBuilder<InventarioContext>()
+        .UseMySql("Database=verificacion_cu06;Port=1",new MySqlServerVersion(new Version(8,0,36)))
+        .AddInterceptors(new BloqueoConexion()).Options;
+    using var db = new InventarioContext(options);
+    var model = db.GetService<IDesignTimeModel>().Model;
+    var categoria = model.FindEntityType(typeof(Categoria))!;
+    Exigir(categoria.GetTableName() == "categorias");
+    Exigir(categoria.FindProperty(nameof(Categoria.Nombre))!.GetMaxLength() == 50);
+    Exigir(categoria.FindProperty(nameof(Categoria.Descripcion))!.GetMaxLength() == 200);
+    Exigir(categoria.FindProperty(nameof(Categoria.CreadoEn))!.GetDefaultValueSql() == "CURRENT_TIMESTAMP");
+    Exigir(categoria.GetIndexes().Any(i => i.IsUnique));
+    await Task.CompletedTask;
+},0);
+
+await EjecutarPruebasHttpAislado();
+
+Console.WriteLine($"TOTAL_APROBADAS={total}; INTEGRACION_MYSQL=PENDIENTE; HTTP_AISLADO=EJECUTADO");
 
 async Task Probar(string nombre, Func<ProductoController,UnidadEnMemoria,IServiceProvider,Task> caso,int guardados=0,int confirmaciones=0)
 {
@@ -675,6 +845,426 @@ static ActualizarProductoDto Edicion(string? nombre="Pan",int categoria=2,decima
 {
     Nombre=nombre, CategoriaId=categoria, PrecioCompra=compra, PrecioVenta=venta
 };
+
+async Task EjecutarPruebasHttpAislado()
+{
+    const string key = "clave-sintetica-de-prueba-64-bytes-minimo-abcdefghijklmnopqrstuvwx123456";
+    const string issuer = "Pruebas.ControlInventario";
+    const string audience = "Pruebas.ControlInventario.Cliente";
+
+    var unit = new UnidadEnMemoria();
+    var hasher = new PasswordHasher<Usuario>();
+    unit.Usuarios.Filas.Clear();
+    unit.Usuarios.Filas.AddRange(
+    [
+        new Usuario
+        {
+            Id = 101,
+            RolId = 1,
+            NombreCompleto = "Administrador sintético",
+            Email = "admin@test.local",
+            PasswordHash = hasher.HashPassword(new Usuario(), "ClaveSintetica.Admin"),
+            Activo = true,
+            Rol = new Rol { Id = 1, Nombre = "Administrador" }
+        },
+        new Usuario
+        {
+            Id = 102,
+            RolId = 2,
+            NombreCompleto = "Empleado sintético",
+            Email = "empleado@test.local",
+            PasswordHash = hasher.HashPassword(new Usuario(), "ClaveSintetica.Empleado"),
+            Activo = true,
+            Rol = new Rol { Id = 2, Nombre = "Empleado" }
+        },
+        new Usuario
+        {
+            Id = 103,
+            RolId = 2,
+            NombreCompleto = "Usuario inactivo sintético",
+            Email = "inactivo@test.local",
+            PasswordHash = hasher.HashPassword(new Usuario(), "ClaveSintetica.Inactivo"),
+            Activo = false,
+            Rol = new Rol { Id = 2, Nombre = "Empleado" }
+        },
+        new Usuario
+        {
+            Id = 104,
+            RolId = 99,
+            NombreCompleto = "Rol desconocido sintético",
+            Email = "desconocido@test.local",
+            PasswordHash = hasher.HashPassword(new Usuario(), "ClaveSintetica.Desconocido"),
+            Activo = true,
+            Rol = new Rol { Id = 99, Nombre = "RolDesconocido" }
+        }
+    ]);
+    unit.Productos.Filas.Add(Fila());
+
+    var builder = WebApplication.CreateBuilder(new WebApplicationOptions
+    {
+        EnvironmentName = Environments.Development
+    });
+    builder.WebHost.UseUrls("http://127.0.0.1:0");
+    builder.Configuration["Jwt:Key"] = key;
+    builder.Configuration["Jwt:Issuer"] = issuer;
+    builder.Configuration["Jwt:Audience"] = audience;
+    builder.Configuration["Jwt:ExpirationMinutes"] = "30";
+
+    builder.Services.AddControlInventarioAuthentication(builder.Configuration);
+    builder.Services.AddControllers()
+        .AddApplicationPart(typeof(ProductoController).Assembly);
+    builder.Services.AddAutoMapper(typeof(ProductoProfile).Assembly);
+    builder.Services.AddSingleton(unit);
+    builder.Services.AddSingleton<IUnitOfWork>(unit);
+    builder.Services.AddSingleton<IUsuarioRepository>(unit.UsuarioRepository);
+    builder.Services.AddSingleton<IProductoRepository>(unit.ProductoRepository);
+    builder.Services.AddSingleton<ICategoriaRepository>(unit.CategoriaRepository);
+    builder.Services.AddSingleton<IHistorialProductoRepository>(unit.HistorialProductoRepository);
+    builder.Services.AddScoped<IProductoService, ProductoService>();
+    builder.Services.AddScoped<ICategoriaService, CategoriaService>();
+    builder.Services.AddScoped<IAuthenticationService, AuthenticationService>();
+    builder.Services.AddScoped<ITokenService, TokenService>();
+    builder.Services.AddSingleton<IOptions<JwtSettings>>(Options.Create(new JwtSettings
+    {
+        Key = key,
+        Issuer = issuer,
+        Audience = audience,
+        ExpirationMinutes = 30
+    }));
+    builder.Services.AddScoped<PasswordHasher<Usuario>>();
+    builder.Services.AddScoped<CrearProductoDtoValidator>();
+    builder.Services.AddScoped<ActualizarProductoDtoValidator>();
+    builder.Services.AddScoped<CrearCategoriaDtoValidator>();
+    builder.Services.AddScoped<ActualizarCategoriaDtoValidator>();
+    builder.Services.AddScoped<ConsultaStockQueryDtoValidator>();
+    builder.Services.AddScoped<LoginDtoValidator>();
+
+    await using var app = builder.Build();
+    app.UseMiddleware<ExceptionHandlingMiddleware>();
+    app.UseAuthentication();
+    app.UseAuthorization();
+    app.MapControllers();
+    app.MapGet("/pruebas/error", (HttpContext _) =>
+        throw new InvalidOperationException("Fallo sintético"));
+
+    await app.StartAsync();
+    try
+    {
+        var addresses = app.Services.GetRequiredService<IServer>()
+            .Features.Get<IServerAddressesFeature>()?.Addresses;
+        var baseUrl = addresses?.FirstOrDefault();
+        Exigir(!string.IsNullOrWhiteSpace(baseUrl), "El host HTTP aislado no recibió una dirección.");
+        using var client = new HttpClient { BaseAddress = new Uri(baseUrl!) };
+
+        string Token(Usuario usuario, string? rol = null, DateTime? expires = null)
+        {
+            var claims = new[]
+            {
+                new Claim(ClaimTypes.NameIdentifier, usuario.Id.ToString()),
+                new Claim(ClaimTypes.Name, usuario.NombreCompleto),
+                new Claim(ClaimTypes.Role, rol ?? RoleNames.Normalizar(usuario.Rol?.Nombre)!)
+            };
+            var token = new JwtSecurityToken(
+                issuer,
+                audience,
+                claims,
+                expires: expires ?? DateTime.UtcNow.AddMinutes(30),
+                signingCredentials: new SigningCredentials(
+                    new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
+                    SecurityAlgorithms.HmacSha256));
+            return new JwtSecurityTokenHandler { MapInboundClaims = false }.WriteToken(token);
+        }
+
+        void Bearer(HttpRequestMessage request, string token)
+        {
+            request.Headers.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", token);
+        }
+
+        var admin = unit.Usuarios.Filas.Single(u => u.Email == "admin@test.local");
+        var empleado = unit.Usuarios.Filas.Single(u => u.Email == "empleado@test.local");
+        var inactivo = unit.Usuarios.Filas.Single(u => u.Email == "inactivo@test.local");
+        var desconocido = unit.Usuarios.Filas.Single(u => u.Email == "desconocido@test.local");
+        var adminToken = Token(admin);
+        var empleadoToken = Token(empleado);
+
+        await ProbarHttp("HTTP login válido y respuesta sin secretos", async () =>
+        {
+            using var response = await client.PostAsJsonAsync("/api/Auth/login", new LoginDto
+            {
+                Email = "admin@test.local",
+                Password = "ClaveSintetica.Admin"
+            });
+            Exigir(response.StatusCode == HttpStatusCode.OK);
+            var json = await response.Content.ReadAsStringAsync();
+            Exigir(json.Contains("\"token\"", StringComparison.OrdinalIgnoreCase));
+            Exigir(!json.Contains("PasswordHash", StringComparison.OrdinalIgnoreCase));
+            Exigir(!json.Contains("password_hash", StringComparison.OrdinalIgnoreCase));
+            Exigir(!json.Contains("ClaveSintetica", StringComparison.Ordinal));
+        });
+
+        await ProbarHttp("HTTP login rechaza credenciales inválidas e inactivo", async () =>
+        {
+            using var passwordResponse = await client.PostAsJsonAsync("/api/Auth/login", new LoginDto
+            {
+                Email = "admin@test.local",
+                Password = "Incorrecta"
+            });
+            Exigir(passwordResponse.StatusCode == HttpStatusCode.Unauthorized);
+
+            using var missingUserResponse = await client.PostAsJsonAsync("/api/Auth/login", new LoginDto
+            {
+                Email = "nadie@test.local",
+                Password = "ClaveSintetica.Nadie"
+            });
+            Exigir(missingUserResponse.StatusCode == HttpStatusCode.Unauthorized);
+
+            using var inactiveResponse = await client.PostAsJsonAsync("/api/Auth/login", new LoginDto
+            {
+                Email = "inactivo@test.local",
+                Password = "ClaveSintetica.Inactivo"
+            });
+            Exigir(inactiveResponse.StatusCode == HttpStatusCode.Unauthorized);
+
+            using var invalidEmailResponse = await client.PostAsJsonAsync("/api/Auth/login", new LoginDto
+            {
+                Email = "correo",
+                Password = "ClaveSintetica"
+            });
+            Exigir(invalidEmailResponse.StatusCode == HttpStatusCode.BadRequest);
+
+            using var missingPasswordResponse = await client.PostAsJsonAsync("/api/Auth/login", new LoginDto
+            {
+                Email = "admin@test.local"
+            });
+            Exigir(missingPasswordResponse.StatusCode == HttpStatusCode.BadRequest);
+        });
+
+        await ProbarHttp("HTTP rechaza token ausente, inválido y HS384", async () =>
+        {
+            using var noToken = await client.GetAsync("/api/Producto");
+            Exigir(noToken.StatusCode == HttpStatusCode.Unauthorized);
+
+            using var invalid = new HttpRequestMessage(HttpMethod.Get, "/api/Producto");
+            Bearer(invalid, "token-invalido");
+            using var invalidResponse = await client.SendAsync(invalid);
+            Exigir(invalidResponse.StatusCode == HttpStatusCode.Unauthorized);
+
+            var hs384 = new JwtSecurityToken(
+                issuer,
+                audience,
+                [
+                    new Claim(ClaimTypes.NameIdentifier, admin.Id.ToString()),
+                    new Claim(ClaimTypes.Role, RoleNames.Administrador)
+                ],
+                expires: DateTime.UtcNow.AddMinutes(30),
+                signingCredentials: new SigningCredentials(
+                    new SymmetricSecurityKey(Encoding.UTF8.GetBytes(key)),
+                    SecurityAlgorithms.HmacSha384));
+            var hs384Token = new JwtSecurityTokenHandler { MapInboundClaims = false }.WriteToken(hs384);
+            using var hs384Request = new HttpRequestMessage(HttpMethod.Get, "/api/Producto");
+            Bearer(hs384Request, hs384Token);
+            using var hs384Response = await client.SendAsync(hs384Request);
+            Exigir(hs384Response.StatusCode == HttpStatusCode.Unauthorized);
+
+            using var noneRequest = new HttpRequestMessage(HttpMethod.Get, "/api/Producto");
+            Bearer(noneRequest, "eyJhbGciOiJub25lIiwidHlwIjoiSldUIn0.eyJuYmYiOjB9.");
+            using var noneResponse = await client.SendAsync(noneRequest);
+            Exigir(noneResponse.StatusCode == HttpStatusCode.Unauthorized);
+        });
+
+        await ProbarHttp("HTTP cambio de rol y estado invalida el token vigente", async () =>
+        {
+            var persistido = unit.Usuarios.Filas.Single(u => u.Id == admin.Id);
+            persistido.Rol = new Rol { Id = 2, Nombre = "Empleado" };
+            using var changedRoleRequest = new HttpRequestMessage(HttpMethod.Get, "/api/Producto");
+            Bearer(changedRoleRequest, adminToken);
+            using var changedRoleResponse = await client.SendAsync(changedRoleRequest);
+            Exigir(changedRoleResponse.StatusCode == HttpStatusCode.Unauthorized);
+
+            persistido.Rol = new Rol { Id = 1, Nombre = "Administrador" };
+            persistido.Activo = false;
+            using var inactiveRequest = new HttpRequestMessage(HttpMethod.Get, "/api/Producto");
+            Bearer(inactiveRequest, adminToken);
+            using var inactiveResponse = await client.SendAsync(inactiveRequest);
+            Exigir(inactiveResponse.StatusCode == HttpStatusCode.Unauthorized);
+
+            persistido.Activo = true;
+            unit.Usuarios.Filas.Remove(persistido);
+            using var deletedRequest = new HttpRequestMessage(HttpMethod.Get, "/api/Producto");
+            Bearer(deletedRequest, adminToken);
+            using var deletedResponse = await client.SendAsync(deletedRequest);
+            Exigir(deletedResponse.StatusCode == HttpStatusCode.Unauthorized);
+
+            unit.Usuarios.Filas.Add(persistido);
+        });
+
+        await ProbarHttp("HTTP matrices CU-02 y autorización", async () =>
+        {
+            using var employeeRequest = new HttpRequestMessage(HttpMethod.Get, "/api/Producto");
+            Bearer(employeeRequest, empleadoToken);
+            using var employeeResponse = await client.SendAsync(employeeRequest);
+            Exigir(employeeResponse.StatusCode == HttpStatusCode.Forbidden);
+
+            using var adminRequest = new HttpRequestMessage(HttpMethod.Get, "/api/Producto");
+            Bearer(adminRequest, adminToken);
+            using var adminResponse = await client.SendAsync(adminRequest);
+            Exigir(adminResponse.StatusCode == HttpStatusCode.OK);
+
+            using var duplicate = await client.PostAsJsonAsync("/api/Producto", new
+            {
+                Nombre = "Pan",
+                CategoriaId = 2,
+                PrecioCompra = 2m,
+                PrecioVenta = 5m
+            });
+            Exigir(duplicate.StatusCode == HttpStatusCode.Unauthorized ||
+                duplicate.StatusCode == HttpStatusCode.Conflict ||
+                duplicate.StatusCode == HttpStatusCode.Created);
+        });
+
+        await ProbarHttp("HTTP identidad del historial mediante PUT y DELETE", async () =>
+        {
+            var persistido = unit.Usuarios.Filas.Single(u => u.Id == admin.Id);
+            persistido.Activo = true;
+            persistido.Rol = new Rol { Id = 1, Nombre = "Administrador" };
+            unit.Productos.Filas.Clear();
+            unit.Productos.Filas.Add(Fila());
+            unit.Historial.Clear();
+
+            using var put = new HttpRequestMessage(HttpMethod.Put, "/api/Producto/11")
+            {
+                Content = JsonContent.Create(new
+                {
+                    Nombre = "Pan modificado",
+                    CategoriaId = 2,
+                    PrecioCompra = 2m,
+                    PrecioVenta = 6m,
+                    UsuarioId = 999
+                })
+            };
+            Bearer(put, adminToken);
+            using var putResponse = await client.SendAsync(put);
+            Exigir(putResponse.StatusCode == HttpStatusCode.OK);
+            Exigir(unit.Historial.All(registro => registro.UsuarioId == admin.Id));
+            Exigir(unit.Historial.Any(registro => registro.CampoModificado == "nombre"));
+            Exigir(unit.Historial.Any(registro => registro.CampoModificado == "precio_venta"));
+
+            using var del = new HttpRequestMessage(HttpMethod.Delete, "/api/Producto/11");
+            Bearer(del, adminToken);
+            using var delResponse = await client.SendAsync(del);
+            Exigir(delResponse.StatusCode == HttpStatusCode.NoContent);
+            Exigir(unit.Historial.Any(registro => registro.CampoModificado == "activo"));
+        });
+
+        await ProbarHttp("HTTP stock protege ambas rutas para empleado y admin", async () =>
+        {
+            foreach (var ruta in new[] { "/api/Producto/stock", "/api/inventory/stock" })
+            {
+                using var noToken = await client.GetAsync(ruta);
+                Exigir(noToken.StatusCode == HttpStatusCode.Unauthorized);
+
+                using var employee = new HttpRequestMessage(HttpMethod.Get, ruta);
+                Bearer(employee, empleadoToken);
+                using var employeeResponse = await client.SendAsync(employee);
+                Exigir(employeeResponse.StatusCode == HttpStatusCode.OK);
+
+                using var admin = new HttpRequestMessage(HttpMethod.Get, ruta);
+                Bearer(admin, adminToken);
+                using var adminResponse = await client.SendAsync(admin);
+                Exigir(adminResponse.StatusCode == HttpStatusCode.OK);
+            }
+
+            using var invalida = await client.GetAsync("/api/Producto/stock?categoriaId=0");
+            Exigir(invalida.StatusCode == HttpStatusCode.Unauthorized ||
+                invalida.StatusCode == HttpStatusCode.BadRequest);
+        });
+
+        await ProbarHttp("HTTP categorías protege lectura y escrituras", async () =>
+        {
+            using var employee = new HttpRequestMessage(HttpMethod.Get, "/api/categories");
+            Bearer(employee, empleadoToken);
+            using var employeeRead = await client.SendAsync(employee);
+            Exigir(employeeRead.StatusCode == HttpStatusCode.OK);
+
+            using var employeeWrite = new HttpRequestMessage(HttpMethod.Post, "/api/categories")
+            {
+                Content = JsonContent.Create(new CrearCategoriaDto
+                {
+                    Nombre = "Prueba",
+                    Descripcion = "Sintética"
+                })
+            };
+            Bearer(employeeWrite, empleadoToken);
+            using var employeeWriteResponse = await client.SendAsync(employeeWrite);
+            Exigir(employeeWriteResponse.StatusCode == HttpStatusCode.Forbidden);
+
+            using var adminWrite = new HttpRequestMessage(HttpMethod.Post, "/api/categories")
+            {
+                Content = JsonContent.Create(new CrearCategoriaDto
+                {
+                    Nombre = "Nueva categoría HTTP",
+                    Descripcion = "Sintética"
+                })
+            };
+            Bearer(adminWrite, adminToken);
+            using var adminWriteResponse = await client.SendAsync(adminWrite);
+            Exigir(adminWriteResponse.StatusCode == HttpStatusCode.Created);
+        });
+
+        await ProbarHttp("HTTP middleware devuelve 500 genérico sin detalle interno", async () =>
+        {
+            using var response = await client.GetAsync("/pruebas/error");
+            Exigir(response.StatusCode == HttpStatusCode.InternalServerError);
+            var body = await response.Content.ReadAsStringAsync();
+            Exigir(!body.Contains("Fallo sintético", StringComparison.OrdinalIgnoreCase));
+            Exigir(body.Contains("Error interno no controlado.", StringComparison.OrdinalIgnoreCase));
+        });
+    }
+    finally
+    {
+        await app.StopAsync();
+    }
+}
+
+async Task ProbarCategorias(
+    string nombre,
+    Func<UnidadEnMemoria,IServiceProvider,Task> caso,
+    int guardadosEsperados)
+{
+    using var scope = proveedor.CreateScope();
+    var u = scope.ServiceProvider.GetRequiredService<UnidadEnMemoria>();
+    try
+    {
+        await caso(u,scope.ServiceProvider);
+        Exigir(u.Guardados == guardadosEsperados &&
+            u.Confirmaciones == 0 &&
+            !u.EnTransaccion,
+            $"Categoría: guardados {u.Guardados}, confirmaciones {u.Confirmaciones}");
+        total++;
+        Console.WriteLine("OK " + nombre);
+    }
+    catch
+    {
+        Console.Error.WriteLine("FALLO " + nombre);
+        throw;
+    }
+}
+
+async Task ProbarHttp(string nombre, Func<Task> caso)
+{
+    try
+    {
+        await caso();
+        total++;
+        Console.WriteLine("OK HTTP " + nombre);
+    }
+    catch
+    {
+        Console.Error.WriteLine("FALLO HTTP " + nombre);
+        throw;
+    }
+}
 
 static void Historial(UnidadEnMemoria unidad,params string[] campos)
 {

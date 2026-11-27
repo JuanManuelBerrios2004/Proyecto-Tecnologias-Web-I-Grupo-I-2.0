@@ -29,7 +29,6 @@ namespace ControlInventario.Api.Controllers
         /// No modifica ningún dato.
         /// Alias temporal compatible; la ruta oficial es /api/Producto/stock.
         /// </summary>
-        // TODO (CU-01): agregar [Authorize] cuando exista el login con JWT.
         [HttpGet("stock")]
         [Authorize(Policy = RoleNames.ConsultaStockPolicy)]
         public async Task<IActionResult> GetStock([FromQuery] ConsultaStockQueryDto query)

@@ -83,9 +83,6 @@ namespace ControlInventario.Api
             builder.Services.AddScoped<ActualizarCategoriaDtoValidator>();
 
             builder.Services.AddScoped<
-                ProductoDtoValidator>();
-
-            builder.Services.AddScoped<
                 CrearMovimientoDtoValidator>();
 
             /*

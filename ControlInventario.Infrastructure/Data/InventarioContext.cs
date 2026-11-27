@@ -25,6 +25,8 @@ public partial class InventarioContext : DbContext
 
     public virtual DbSet<Producto> Productos { get; set; }
 
+    public virtual DbSet<HistorialProducto> HistorialProductos { get; set; }
+
     public virtual DbSet<MovimientoInventario> MovimientosInventario { get; set; }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)

@@ -11,7 +11,11 @@ namespace ControlInventario.Infrastructure
         public void Configure(
             EntityTypeBuilder<Producto> entity)
         {
-            entity.ToTable("productos");
+            entity.ToTable("productos", tabla =>
+            {
+                tabla.HasCheckConstraint("chk_precio_venta", "precio_venta > precio_compra");
+                tabla.HasCheckConstraint("chk_stock_positivo", "stock_actual >= 0");
+            });
 
             entity.HasKey(x => x.Id);
 
@@ -22,6 +26,8 @@ namespace ControlInventario.Infrastructure
             entity.Property(x => x.CategoriaId)
                 .HasColumnName("categoria_id")
                 .IsRequired();
+
+            entity.HasIndex(x => x.Nombre).IsUnique().HasDatabaseName("nombre");
 
             entity.Property(x => x.Nombre)
                 .HasColumnName("nombre")

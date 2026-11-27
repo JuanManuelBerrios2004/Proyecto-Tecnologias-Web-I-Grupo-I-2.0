@@ -22,6 +22,11 @@ namespace ControlInventario.Infrastructure.Repositories
             throw new NotImplementedException();
         }
 
+        public Task<bool> ExisteUsuarioAsync(int id)
+        {
+            return _inventarioContext.Usuarios.AnyAsync(usuario => usuario.Id == id);
+        }
+
         public Task<Usuario?> GetUsuarioByIdAsync(int id)
         {
             throw new NotImplementedException();

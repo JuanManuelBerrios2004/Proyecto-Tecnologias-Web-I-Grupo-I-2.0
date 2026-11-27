@@ -1,4 +1,8 @@
+using System.Globalization;
+using System.Net;
+using System.Security.Claims;
 using AutoMapper;
+using FluentValidation;
 using Microsoft.AspNetCore.Mvc;
 using ControlInventario.Api.Response;
 using ControlInventario.Core.DTOs;
@@ -9,6 +13,7 @@ using ControlInventario.Services.Validators;
 
 namespace ControlInventario.Api.Controllers
 {
+    // Fase 6: aplicar la política de Dueño / Administrador al catálogo; stock tiene permisos propios.
     [Route("api/[controller]")]
     [ApiController]
     public class ProductoController : ControllerBase
@@ -43,18 +48,9 @@ namespace ControlInventario.Api.Controllers
             [FromQuery] int? categoriaId,
             [FromQuery] bool? soloActivos)
         {
-            try
-            {
-                var productos = await _productoService.GetProductosAsync(nombre, categoriaId, soloActivos);
-                var productosDto = _mapper.Map<IEnumerable<ProductoDto>>(productos);
-
-                var response = new ApiResponse<IEnumerable<ProductoDto>>(productosDto);
-                return Ok(response);
-            }
-            catch (Exception)
-            {
-                return StatusCode(500, new { message = "Error al obtener los productos" });
-            }
+            var productos = await _productoService.GetProductosAsync(nombre, categoriaId, soloActivos);
+            var datos = _mapper.Map<IEnumerable<ProductoDto>>(productos);
+            return Ok(new ApiResponse<IEnumerable<ProductoDto>>(datos));
         }
 
         /// <summary>
@@ -63,24 +59,10 @@ namespace ControlInventario.Api.Controllers
         [HttpGet("{id:int}")]
         public async Task<IActionResult> GetProductoById(int id)
         {
-            if (id <= 0)
-                return BadRequest(new { message = "El ID debe ser mayor que cero." });
-
-            try
-            {
-                var producto = await _productoService.GetProductoByIdAsync(id);
-                if (producto == null)
-                    return NotFound(new { message = "Producto no encontrado." });
-
-                var productoDto = _mapper.Map<ProductoDto>(producto);
-
-                var response = new ApiResponse<ProductoDto>(productoDto);
-                return Ok(response);
-            }
-            catch (Exception)
-            {
-                return StatusCode(500, new { message = "Error al obtener el producto" });
-            }
+            ValidarId(id);
+            var producto = await _productoService.GetProductoByIdAsync(id);
+            var dto = _mapper.Map<ProductoDto>(producto);
+            return Ok(new ApiResponse<ProductoDto>(dto));
         }
 
         /// <summary>
@@ -127,38 +109,10 @@ namespace ControlInventario.Api.Controllers
         [HttpPost]
         public async Task<IActionResult> InsertProducto([FromBody] CrearProductoDto productoDto)
         {
-            // Validar el DTO
-            var validationResult = await _crearValidator.ValidateAsync(productoDto);
-            if (!validationResult.IsValid)
-            {
-                return BadRequest(new
-                {
-                    message = "Error de validación",
-                    errors = validationResult.Errors.Select(e => new
-                    {
-                        field = e.PropertyName,
-                        error = e.ErrorMessage
-                    })
-                });
-            }
-
-            try
-            {
-                var producto = _mapper.Map<Producto>(productoDto);
-                var creado = await _productoService.InsertProducto(producto);
-                var resultDto = _mapper.Map<ProductoDto>(creado);
-
-                var response = new ApiResponse<ProductoDto>(resultDto);
-                return Created($"api/producto/{creado.Id}", response);
-            }
-            catch (BusinessException ex)
-            {
-                return StatusCode((int)ex.StatusCode, new { message = ex.Message });
-            }
-            catch (Exception)
-            {
-                return StatusCode(500, new { message = "Error al crear el producto" });
-            }
+            await _crearValidator.ValidateAndThrowAsync(productoDto);
+            var producto = _mapper.Map<Producto>(productoDto);
+            var creado = await _productoService.InsertProducto(producto);
+            return CreatedAtAction(nameof(GetProductoById), new { id = creado.Id }, _mapper.Map<ProductoDto>(creado));
         }
 
         /// <summary>
@@ -167,43 +121,14 @@ namespace ControlInventario.Api.Controllers
         [HttpPut("{id:int}")]
         public async Task<IActionResult> UpdateProducto(int id, [FromBody] ActualizarProductoDto productoDto)
         {
-            if (id <= 0)
-                return BadRequest(new { message = "El ID debe ser mayor que cero." });
+            var usuarioId = ObtenerUsuarioIdAutenticado();
+            ValidarId(id);
+            await _actualizarValidator.ValidateAndThrowAsync(productoDto);
+            var cambios = _mapper.Map<Producto>(productoDto);
+            cambios.Id = id;
 
-            // Validar el DTO
-            var validationResult = await _actualizarValidator.ValidateAsync(productoDto);
-            if (!validationResult.IsValid)
-            {
-                return BadRequest(new
-                {
-                    message = "Error de validación",
-                    errors = validationResult.Errors.Select(e => new
-                    {
-                        field = e.PropertyName,
-                        error = e.ErrorMessage
-                    })
-                });
-            }
-
-            try
-            {
-                var cambios = _mapper.Map<Producto>(productoDto);
-                cambios.Id = id;
-
-                var actualizado = await _productoService.UpdateProducto(cambios);
-                var resultDto = _mapper.Map<ProductoDto>(actualizado);
-
-                var response = new ApiResponse<ProductoDto>(resultDto);
-                return Ok(response);
-            }
-            catch (BusinessException ex)
-            {
-                return StatusCode((int)ex.StatusCode, new { message = ex.Message });
-            }
-            catch (Exception)
-            {
-                return StatusCode(500, new { message = "Error al actualizar el producto" });
-            }
+            var actualizado = await _productoService.UpdateProducto(cambios, usuarioId);
+            return Ok(_mapper.Map<ProductoDto>(actualizado));
         }
 
         #endregion
@@ -216,23 +141,40 @@ namespace ControlInventario.Api.Controllers
         [HttpDelete("{id:int}")]
         public async Task<IActionResult> DeleteProducto(int id)
         {
-            if (id <= 0)
-                return BadRequest(new { message = "El ID debe ser mayor que cero." });
-
-            try
-            {
-                var desactivado = await _productoService.DesactivarProductoAsync(id);
-                if (!desactivado)
-                    return NotFound(new { message = "Producto no encontrado." });
-
-                return NoContent(); // 204 sin contenido
-            }
-            catch (Exception)
-            {
-                return StatusCode(500, new { message = "Error al desactivar el producto" });
-            }
+            var usuarioId = ObtenerUsuarioIdAutenticado();
+            ValidarId(id);
+            await _productoService.DesactivarProductoAsync(id, usuarioId);
+            return NoContent();
         }
 
         #endregion
+
+        private int ObtenerUsuarioIdAutenticado()
+        {
+            var identificadores = User?.Identities
+                .Where(identidad => identidad.IsAuthenticated)
+                .SelectMany(identidad => identidad.FindAll(ClaimTypes.NameIdentifier))
+                .Select(claim => claim.Value)
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+
+            if (identificadores is not { Length: 1 }
+                || !int.TryParse(identificadores[0], NumberStyles.None, CultureInfo.InvariantCulture, out var id)
+                || id <= 0)
+            {
+                throw new BusinessException("Se requiere una identidad de usuario autenticada válida.",
+                    HttpStatusCode.Unauthorized);
+            }
+
+            return id;
+        }
+
+        private static void ValidarId(int id)
+        {
+            if (id <= 0)
+            {
+                throw new BusinessException("El ID debe ser mayor que cero.");
+            }
+        }
     }
 }

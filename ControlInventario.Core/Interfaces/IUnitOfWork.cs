@@ -5,6 +5,7 @@ namespace ControlInventario.Core.Interfaces
     public interface IUnitOfWork : IDisposable
     {
         IProductoRepository ProductoRepository { get; }
+        IHistorialProductoRepository HistorialProductoRepository { get; }
         ICategoriaRepository CategoriaRepository { get; }
         IUsuarioRepository UsuarioRepository { get; }
         IMovimientoInventarioRepository MovimientoInventarioRepository { get; }

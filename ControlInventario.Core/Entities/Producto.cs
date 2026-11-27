@@ -1,5 +1,3 @@
-using System.ComponentModel.DataAnnotations.Schema;
-
 namespace ControlInventario.Core.Entities;
 
 public partial class Producto : BaseEntity
@@ -7,9 +5,6 @@ public partial class Producto : BaseEntity
     public int CategoriaId { get; set; }
 
     public string Nombre { get; set; } = null!;
-
-    [NotMapped]
-    public string? Descripcion { get; set; }
 
     public decimal PrecioCompra { get; set; }
 

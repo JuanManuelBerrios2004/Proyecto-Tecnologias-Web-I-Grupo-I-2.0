@@ -10,6 +10,7 @@ namespace ControlInventario.Infrastructure.Repositories
     {
         private readonly InventarioContext _context;
         private IProductoRepository? _productoRepository;
+        private IHistorialProductoRepository? _historialProductoRepository;
         private ICategoriaRepository? _categoriaRepository;
         private IUsuarioRepository? _usuarioRepository;
         private IMovimientoInventarioRepository? _movimientoInventarioRepository;
@@ -22,6 +23,9 @@ namespace ControlInventario.Infrastructure.Repositories
 
         public IProductoRepository ProductoRepository =>
             _productoRepository ??= new ProductoRepository(_context);
+
+        public IHistorialProductoRepository HistorialProductoRepository =>
+            _historialProductoRepository ??= new HistorialProductoRepository(_context);
 
         public ICategoriaRepository CategoriaRepository =>
             _categoriaRepository ??= new CategoriaRepository(_context);

@@ -9,12 +9,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <PackageReference Include="BCrypt.Net-Next" Version="4.2.0" />
     <PackageReference Include="FluentValidation.AspNetCore" Version="11.3.1" />
     <PackageReference Include="FluentValidation.DependencyInjectionExtensions" Version="11.12.0" />
+    <PackageReference Include="System.IdentityModel.Tokens.Jwt" Version="8.23.0" />
   </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\ControlInventario.Infrastructure\ControlInventario.Infrastructure.csproj" />
+    <ProjectReference Include="..\ControlInventario.Core\ControlInventario.Core.csproj" />
   </ItemGroup>
 
   <ItemGroup>

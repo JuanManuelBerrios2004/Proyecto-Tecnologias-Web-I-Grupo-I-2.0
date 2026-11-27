@@ -1,6 +1,5 @@
 using System.Net;
 using Microsoft.EntityFrameworkCore;
-using MySqlConnector;
 using ControlInventario.Core.DTOs;
 using ControlInventario.Core.Entities;
 using ControlInventario.Core.Exceptions;
@@ -79,27 +78,14 @@ namespace ControlInventario.Services.Services
             {
                 await _unitOfWork.SaveChangesAsync();
             }
-            catch (DbUpdateException ex) when (EsErrorMySql(ex, 1062))
+            catch (DbUpdateException ex) when (ErrorMySql.Coincide(ex, 1062))
             {
                 throw new BusinessException("Ya existe un producto registrado con ese nombre.", HttpStatusCode.Conflict);
             }
-            catch (DbUpdateException ex) when (EsErrorMySql(ex, 1452))
+            catch (DbUpdateException ex) when (ErrorMySql.Coincide(ex, 1452))
             {
                 throw new BusinessException("La categoría indicada no existe.");
             }
-        }
-
-        private static bool EsErrorMySql(DbUpdateException exception, int numeroError)
-        {
-            for (Exception? actual = exception; actual != null; actual = actual.InnerException)
-            {
-                if (actual is MySqlException mySqlException && mySqlException.Number == numeroError)
-                {
-                    return true;
-                }
-            }
-
-            return false;
         }
     }
 }

@@ -50,6 +50,7 @@ namespace ControlInventario.Api
                 services.GetRequiredService<IUnitOfWork>().MovimientoInventarioRepository);
 
             builder.Services.AddTransient<IProductoService, ProductoService>();
+            builder.Services.AddTransient<ICategoriaService, CategoriaService>();
 
             /*
              * SERVICE CU-03
@@ -78,8 +79,8 @@ namespace ControlInventario.Api
             builder.Services.AddScoped<
                 ActualizarProductoDtoValidator>();
 
-            builder.Services.AddScoped<
-                CategoriaDtoValidator>();
+            builder.Services.AddScoped<CrearCategoriaDtoValidator>();
+            builder.Services.AddScoped<ActualizarCategoriaDtoValidator>();
 
             builder.Services.AddScoped<
                 ProductoDtoValidator>();

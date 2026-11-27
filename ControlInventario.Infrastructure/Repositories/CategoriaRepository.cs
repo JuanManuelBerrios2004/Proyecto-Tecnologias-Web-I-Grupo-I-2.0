@@ -2,9 +2,6 @@ using Microsoft.EntityFrameworkCore;
 using ControlInventario.Core.Entities;
 using ControlInventario.Core.Interfaces;
 using ControlInventario.Infrastructure.Data;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace ControlInventario.Infrastructure.Repositories
 {
@@ -19,29 +16,21 @@ namespace ControlInventario.Infrastructure.Repositories
             return Entity.AnyAsync(categoria => categoria.Id == id);
         }
 
-        public Task<IEnumerable<Categoria>> GetAllCategoriasAsync()
+        public Task<bool> ExisteNombreAsync(string nombre, int? excluirId = null)
         {
-            throw new NotImplementedException();
+            // La igualdad utiliza la collation de la columna en MySQL.
+            var query = Entity.Where(categoria => categoria.Nombre == nombre);
+            if (excluirId is int id)
+            {
+                query = query.Where(categoria => categoria.Id != id);
+            }
+
+            return query.AnyAsync();
         }
 
-        public Task<Categoria?> GetCategoriaByIdAsync(int id)
+        public Task<bool> TieneProductosAsociadosAsync(int id)
         {
-            throw new NotImplementedException();
-        }
-
-        public Task InsertCategoria(Categoria categoria)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task UpdateCategoria(Categoria categoria)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task DeleteCategoria(Categoria categoria)
-        {
-            throw new NotImplementedException();
+            return Context.Productos.AnyAsync(producto => producto.CategoriaId == id);
         }
     }
 }

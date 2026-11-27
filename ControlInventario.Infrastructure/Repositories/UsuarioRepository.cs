@@ -1,7 +1,7 @@
-using Microsoft.EntityFrameworkCore;
 using ControlInventario.Core.Entities;
 using ControlInventario.Core.Interfaces;
 using ControlInventario.Infrastructure.Data;
+using Microsoft.EntityFrameworkCore;
 
 namespace ControlInventario.Infrastructure.Repositories
 {
@@ -16,47 +16,57 @@ namespace ControlInventario.Infrastructure.Repositories
 
         public async Task<IEnumerable<Usuario>> GetAllUsuariosAsync()
         {
-            return await _inventarioContext.Set<Usuario>()
-                .Include(u => u.Rol)
+            return await _inventarioContext.Usuarios
+                .Include(usuario => usuario.Rol)
                 .ToListAsync();
         }
 
-        public async Task<Usuario?> GetUsuarioByIdAsync(int id)
+        public Task<bool> ExisteUsuarioAsync(int id)
         {
-            return await _inventarioContext.Set<Usuario>()
-                .Include(u => u.Rol)
-                .FirstOrDefaultAsync(u => u.Id == id);
+            return _inventarioContext.Usuarios.AnyAsync(usuario => usuario.Id == id);
         }
 
-        public async Task<Usuario?> GetUsuarioByEmailAsync(string email)
+        public Task<Usuario?> GetUsuarioByIdAsync(int id)
         {
-            return await _inventarioContext.Set<Usuario>()
-                .Include(u => u.Rol)
-                .FirstOrDefaultAsync(u => u.Email == email);
+            return _inventarioContext.Usuarios
+                .Include(usuario => usuario.Rol)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(usuario => usuario.Id == id);
         }
 
-        public async Task<Usuario?> GetByCredentialsAsync(string email)
+        public Task<Usuario?> GetUsuarioByEmailAsync(string email)
         {
-            return await _inventarioContext.Set<Usuario>()
-                .Include(u => u.Rol)
-                .FirstOrDefaultAsync(u => u.Email == email);
+            var normalizado = email.Trim().ToLower();
+            return _inventarioContext.Usuarios
+                .Include(usuario => usuario.Rol)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(usuario => usuario.Email.ToLower() == normalizado);
+        }
+
+        public Task<Usuario?> GetByCredentialsAsync(string email)
+        {
+            var normalizado = email.Trim().ToLower();
+            return _inventarioContext.Usuarios
+                .Include(usuario => usuario.Rol)
+                .AsNoTracking()
+                .FirstOrDefaultAsync(usuario => usuario.Email.ToLower() == normalizado);
         }
 
         public async Task InsertUsuario(Usuario usuario)
         {
-            await _inventarioContext.Set<Usuario>().AddAsync(usuario);
+            await _inventarioContext.Usuarios.AddAsync(usuario);
             await _inventarioContext.SaveChangesAsync();
         }
 
         public async Task UpdateUsuario(Usuario usuario)
         {
-            _inventarioContext.Set<Usuario>().Update(usuario);
+            _inventarioContext.Usuarios.Update(usuario);
             await _inventarioContext.SaveChangesAsync();
         }
 
         public async Task DeleteUsuario(Usuario usuario)
         {
-            _inventarioContext.Set<Usuario>().Remove(usuario);
+            _inventarioContext.Usuarios.Remove(usuario);
             await _inventarioContext.SaveChangesAsync();
         }
     }

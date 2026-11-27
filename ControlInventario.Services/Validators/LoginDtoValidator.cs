@@ -10,7 +10,17 @@ namespace ControlInventario.Services.Validators
     {
         public LoginDtoValidator()
         {
-            // Reglas de validación pendientes de implementación.
+            RuleFor(x => x.Email)
+                .NotEmpty()
+                .WithMessage("El correo electrónico es obligatorio.")
+                .MaximumLength(100)
+                .WithMessage("El correo electrónico no puede exceder los 100 caracteres.")
+                .EmailAddress()
+                .WithMessage("El correo electrónico no tiene un formato válido.");
+
+            RuleFor(x => x.Password)
+                .NotEmpty()
+                .WithMessage("La contraseña es obligatoria.");
         }
     }
 }

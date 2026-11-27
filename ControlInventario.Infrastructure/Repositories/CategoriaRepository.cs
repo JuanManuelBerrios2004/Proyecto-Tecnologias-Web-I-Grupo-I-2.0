@@ -2,44 +2,35 @@ using Microsoft.EntityFrameworkCore;
 using ControlInventario.Core.Entities;
 using ControlInventario.Core.Interfaces;
 using ControlInventario.Infrastructure.Data;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace ControlInventario.Infrastructure.Repositories
 {
-    public class CategoriaRepository : ICategoriaRepository
+    public class CategoriaRepository : BaseRepository<Categoria>, ICategoriaRepository
     {
-        private readonly InventarioContext _inventarioContext;
-
-        public CategoriaRepository(InventarioContext inventarioContext)
+        public CategoriaRepository(InventarioContext inventarioContext) : base(inventarioContext)
         {
-            _inventarioContext = inventarioContext;
         }
 
-        public Task<IEnumerable<Categoria>> GetAllCategoriasAsync()
+        public Task<bool> ExisteCategoriaAsync(int id)
         {
-            throw new NotImplementedException();
+            return Entity.AnyAsync(categoria => categoria.Id == id);
         }
 
-        public Task<Categoria?> GetCategoriaByIdAsync(int id)
+        public Task<bool> ExisteNombreAsync(string nombre, int? excluirId = null)
         {
-            throw new NotImplementedException();
+            // La igualdad utiliza la collation de la columna en MySQL.
+            var query = Entity.Where(categoria => categoria.Nombre == nombre);
+            if (excluirId is int id)
+            {
+                query = query.Where(categoria => categoria.Id != id);
+            }
+
+            return query.AnyAsync();
         }
 
-        public Task InsertCategoria(Categoria categoria)
+        public Task<bool> TieneProductosAsociadosAsync(int id)
         {
-            throw new NotImplementedException();
-        }
-
-        public Task UpdateCategoria(Categoria categoria)
-        {
-            throw new NotImplementedException();
-        }
-
-        public Task DeleteCategoria(Categoria categoria)
-        {
-            throw new NotImplementedException();
+            return Context.Productos.AnyAsync(producto => producto.CategoriaId == id);
         }
     }
 }

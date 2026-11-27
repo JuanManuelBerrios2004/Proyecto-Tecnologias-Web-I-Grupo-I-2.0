@@ -1,75 +1,61 @@
-﻿
-using System;
 using System.Collections.Concurrent;
-using System.IdentityModel.Tokens.Jwt;
-using System.Linq;
-using System.Security.Claims;
-using System.Text;
-using System.Threading.Tasks;
-
+using System.Net;
 using ControlInventario.Core.DTOs;
+using ControlInventario.Core.Entities;
 using ControlInventario.Core.Exceptions;
 using ControlInventario.Core.Interfaces;
+using ControlInventario.Core.Security;
 using ControlInventario.Services.Interfaces;
-
-using Microsoft.Extensions.Configuration;
-using Microsoft.IdentityModel.Tokens;
+using Microsoft.AspNetCore.Identity;
 
 namespace ControlInventario.Services.Services
 {
     public class AuthService : IAuthService
     {
         private readonly IUnitOfWork _unitOfWork;
-        private readonly IConfiguration _configuration;
+        private readonly ITokenService _tokenService;
+        private readonly PasswordHasher<Usuario> _passwordHasher;
 
-        // CU-08: Tokens revocados hasta su expiracion.
-        // Almacenamiento temporal en memoria.
-        private static readonly ConcurrentDictionary<string, DateTime>
-            _revokedTokens = new();
+        private static readonly ConcurrentDictionary<string, DateTime> RevokedTokens = new();
 
         public AuthService(
             IUnitOfWork unitOfWork,
-            IConfiguration configuration)
+            ITokenService tokenService,
+            PasswordHasher<Usuario> passwordHasher)
         {
             _unitOfWork = unitOfWork;
-            _configuration = configuration;
+            _tokenService = tokenService;
+            _passwordHasher = passwordHasher;
         }
 
-        // CU-01: INICIAR SESION
         public async Task<AuthResponseDto> LoginAsync(LoginDto loginDto)
         {
-            if (loginDto == null ||
-                string.IsNullOrWhiteSpace(loginDto.Email) ||
-                string.IsNullOrWhiteSpace(loginDto.Password))
+            if (loginDto == null
+                || string.IsNullOrWhiteSpace(loginDto.Email)
+                || string.IsNullOrWhiteSpace(loginDto.Password))
             {
-                throw new BusinessException(
-                    "Debe ingresar su correo y contraseña.");
+                throw new BusinessException("Debe ingresar su correo y contraseña.");
             }
 
-            var usuario = await _unitOfWork.UsuarioRepository
-                .GetByCredentialsAsync(loginDto.Email);
-
-            if (usuario == null ||
-                !usuario.Activo ||
-                !VerifyPassword(
-                    loginDto.Password,
-                    usuario.PasswordHash))
+            var usuario = await _unitOfWork.UsuarioRepository.GetByCredentialsAsync(loginDto.Email);
+            if (usuario == null
+                || !usuario.Activo
+                || !VerifyPassword(usuario, loginDto.Password, usuario.PasswordHash))
             {
                 throw new BusinessException(
                     "Credenciales inválidas. Verifique su correo y contraseña.",
-                    401);
+                    HttpStatusCode.Unauthorized);
             }
 
-            var expiration = DateTime.UtcNow.AddMinutes(60);
+            var rol = RoleNames.Normalizar(usuario.Rol?.Nombre);
+            if (rol == null)
+            {
+                throw new BusinessException(
+                    "Credenciales inválidas. Verifique su correo y contraseña.",
+                    HttpStatusCode.Unauthorized);
+            }
 
-            var rol = usuario.Rol?.Nombre ?? "Empleado";
-
-            var token = GenerateJwtToken(
-                usuario.NombreCompleto,
-                usuario.Email,
-                rol,
-                expiration);
-
+            var (token, expiration) = _tokenService.Generar(usuario, rol);
             return new AuthResponseDto
             {
                 Token = token,
@@ -79,143 +65,56 @@ namespace ControlInventario.Services.Services
             };
         }
 
-        // CU-08: CERRAR SESION
         public Task LogoutAsync(string jti, DateTime expiration)
         {
             if (!string.IsNullOrWhiteSpace(jti))
             {
-                _revokedTokens[jti] = expiration;
+                RevokedTokens[jti] = expiration;
             }
 
-            // Eliminar registros de tokens expirados.
             var now = DateTime.UtcNow;
-
-            foreach (var item in _revokedTokens
-                .Where(x => x.Value <= now)
-                .ToList())
+            foreach (var item in RevokedTokens.Where(item => item.Value <= now).ToArray())
             {
-                _revokedTokens.TryRemove(
-                    item.Key,
-                    out _);
+                RevokedTokens.TryRemove(item.Key, out _);
             }
 
             return Task.CompletedTask;
         }
 
-        // CONSULTAR SI UN TOKEN FUE REVOCADO
         public bool IsTokenRevoked(string jti)
         {
-            if (string.IsNullOrWhiteSpace(jti))
-            {
-                return false;
-            }
-
-            return _revokedTokens.TryGetValue(
-                jti,
-                out var expiration)
+            return !string.IsNullOrWhiteSpace(jti)
+                && RevokedTokens.TryGetValue(jti, out var expiration)
                 && expiration > DateTime.UtcNow;
         }
 
-        // GENERAR TOKEN JWT
-        private string GenerateJwtToken(
-            string nombre,
-            string email,
-            string rol,
-            DateTime expiration)
+        private bool VerifyPassword(Usuario usuario, string password, string storedHash)
         {
-            var secretKey =
-                _configuration["Authentication:SecretKey"];
-
-            var issuer =
-                _configuration["Authentication:Issuer"];
-
-            var audience =
-                _configuration["Authentication:Audience"];
-
-            if (string.IsNullOrWhiteSpace(secretKey) ||
-                Encoding.UTF8.GetByteCount(secretKey) < 32)
-            {
-                throw new InvalidOperationException(
-                    "La clave JWT no está configurada correctamente.");
-            }
-
-            if (string.IsNullOrWhiteSpace(issuer) ||
-                string.IsNullOrWhiteSpace(audience))
-            {
-                throw new InvalidOperationException(
-                    "Debe configurar Authentication:Issuer y Authentication:Audience.");
-            }
-
-            var key = new SymmetricSecurityKey(
-                Encoding.UTF8.GetBytes(secretKey));
-
-            var credentials = new SigningCredentials(
-                key,
-                SecurityAlgorithms.HmacSha256);
-
-            var claims = new[]
-            {
-                new Claim(
-                    JwtRegisteredClaimNames.Sub,
-                    email),
-
-                new Claim(
-                    JwtRegisteredClaimNames.Jti,
-                    Guid.NewGuid().ToString()),
-
-                new Claim(
-                    ClaimTypes.Name,
-                    nombre),
-
-                new Claim(
-                    ClaimTypes.Email,
-                    email),
-
-                new Claim(
-                    ClaimTypes.Role,
-                    rol)
-            };
-
-            var token = new JwtSecurityToken(
-                issuer: issuer,
-                audience: audience,
-                claims: claims,
-                notBefore: DateTime.UtcNow,
-                expires: expiration,
-                signingCredentials: credentials);
-
-            return new JwtSecurityTokenHandler()
-                .WriteToken(token);
-        }
-
-        // VALIDAR CONTRASEÑA
-        private static bool VerifyPassword(
-            string plainPassword,
-            string storedPasswordHash)
-        {
-            if (string.IsNullOrEmpty(plainPassword) ||
-                string.IsNullOrEmpty(storedPasswordHash))
+            if (string.IsNullOrEmpty(password) || string.IsNullOrEmpty(storedHash))
             {
                 return false;
             }
 
-            // Las contraseñas BCrypt utilizan este formato.
-            // No aceptar una comparación en texto plano
-            // porque PasswordHash debe contener un hash real.
-            if (!storedPasswordHash.StartsWith("$2a$") &&
-                !storedPasswordHash.StartsWith("$2b$") &&
-                !storedPasswordHash.StartsWith("$2y$"))
+            if (storedHash.StartsWith("$2a$", StringComparison.Ordinal)
+                || storedHash.StartsWith("$2b$", StringComparison.Ordinal)
+                || storedHash.StartsWith("$2y$", StringComparison.Ordinal))
             {
-                return false;
+                try
+                {
+                    return BCrypt.Net.BCrypt.Verify(password, storedHash);
+                }
+                catch (BCrypt.Net.SaltParseException)
+                {
+                    return false;
+                }
             }
 
             try
             {
-                return BCrypt.Net.BCrypt.Verify(
-                    plainPassword,
-                    storedPasswordHash);
+                return _passwordHasher.VerifyHashedPassword(usuario, storedHash, password)
+                    != PasswordVerificationResult.Failed;
             }
-            catch (BCrypt.Net.SaltParseException)
+            catch (FormatException)
             {
                 return false;
             }

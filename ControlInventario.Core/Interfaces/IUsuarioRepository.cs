@@ -10,7 +10,7 @@ namespace ControlInventario.Core.Interfaces
         Task<IEnumerable<Usuario>> GetAllUsuariosAsync();
 
         Task<Usuario?> GetUsuarioByIdAsync(int id);
-
+        Task<bool> ExisteUsuarioAsync(int id);
         Task<Usuario?> GetUsuarioByEmailAsync(string email);
 
         Task<Usuario?> GetByCredentialsAsync(string email);

@@ -18,6 +18,10 @@ namespace ControlInventario.Core.Interfaces
         /// </summary>
         Task<Producto?> GetProductoByIdAsync(int id);
 
+        Task<Producto?> ObtenerParaModificarAsync(int id);
+
+        Task<bool> ExisteNombreAsync(string nombre, int? excluirId = null);
+
         /// <summary>
         /// Busca productos por nombre y, opcionalmente, por categoría (CU-02).
         /// Todos los parámetros son opcionales: sin argumentos devuelve el catálogo completo.
@@ -30,18 +34,17 @@ namespace ControlInventario.Core.Interfaces
         /// <summary>
         /// Crea un producto en el catálogo (CU-02).
         /// </summary>
-        Task InsertProducto(Producto producto);
+        Task Add(Producto producto);
 
         /// <summary>
-        /// Actualiza un producto existente (CU-02).
+        /// Aplica cambios del catálogo a un producto obtenido de este repositorio (CU-02).
         /// </summary>
-        Task UpdateProducto(Producto producto);
+        void UpdateProducto(Producto existente, Producto cambios);
 
         /// <summary>
         /// Desactiva lógicamente un producto existente, sin eliminar la fila (CU-02).
-        /// Devuelve false si el producto no existe.
         /// </summary>
-        Task<bool> DesactivarProductoAsync(int id);
+        void DesactivarProducto(Producto producto);
 
         /// <summary>
         /// Consulta el stock disponible de los productos ACTIVOS (CU-05, RN-08).

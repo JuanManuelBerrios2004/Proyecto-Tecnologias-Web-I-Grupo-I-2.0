@@ -1,16 +1,23 @@
+using System.Linq.Expressions;
 using FluentValidation;
-using ControlInventario.Core.DTOs;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
 namespace ControlInventario.Services.Validators
 {
-    public class CategoriaDtoValidator : AbstractValidator<CategoriaDto>
+    public abstract class CategoriaDtoValidator<TDto> : AbstractValidator<TDto>
     {
-        public CategoriaDtoValidator()
+        protected CategoriaDtoValidator(
+            Expression<Func<TDto, string?>> nombre,
+            Expression<Func<TDto, string?>> descripcion)
         {
-            // Reglas de validación pendientes de implementación.
+            RuleFor(nombre)
+                .Cascade(CascadeMode.Stop)
+                .NotEmpty().WithMessage("El nombre de la categoría es obligatorio.")
+                .Must(valor => valor?.Trim().Length <= 50)
+                .WithMessage("El nombre de la categoría no puede superar los 50 caracteres.");
+
+            RuleFor(descripcion)
+                .MaximumLength(200)
+                .WithMessage("La descripción de la categoría no puede superar los 200 caracteres.");
         }
     }
 }
